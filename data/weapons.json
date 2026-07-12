@@ -1,0 +1,126 @@
+[
+  {
+    "id": "bolt", "glyph": "☄", "name": "Arc Bolt",
+    "type": "aimed", "resource": "spell", "cost": 3,
+    "desc": "Aimed bolts ×{count}",
+    "cd": { "base": 0.42 },
+    "dmg": { "base": 9, "perLvl": 0.18 },
+    "count": { "base": 1, "per": 0.5 },
+    "speed": 170, "spreadStep": 0.13, "canCrit": true, "ci": 0
+  },
+  {
+    "id": "nova", "glyph": "✺", "name": "Nova Ring",
+    "type": "radial", "resource": "spell", "cost": 10,
+    "desc": "Radial burst ×{count}",
+    "cd": { "base": 2.28, "perLvl": 0.12, "min": 1.3 },
+    "dmg": { "base": 8, "perLvl": 0.15 },
+    "count": { "base": 10, "per": 2 },
+    "speed": 95, "ci": 2
+  },
+  {
+    "id": "rail", "glyph": "⇶", "name": "Rail Lance",
+    "type": "lance", "resource": "tech", "cost": 9,
+    "desc": "Piercing lance, pierce {pierce}",
+    "cd": { "base": 1.43, "perLvl": 0.07, "min": 0.7 },
+    "dmg": { "base": 32, "perLvl": 0.22 },
+    "pierce": { "base": 4, "per": 1 },
+    "speed": 280, "r": 2, "ci": 1
+  },
+  {
+    "id": "seeker", "glyph": "✧", "name": "Chaos Servitors",
+    "type": "drone", "resource": "tech", "cost": 22,
+    "desc": "Deploys servitors ({hp} HP) that ram foes & soak enemy fire",
+    "cd": { "base": 2.8 },
+    "dmg": { "base": 10.5, "flat": 1.6 },
+    "hp":  { "base": 52, "flat": 16 }
+  },
+  {
+    "id": "frost", "glyph": "❄", "name": "Frost Shard",
+    "type": "aimed", "resource": "spell", "cost": 4,
+    "desc": "Slowing spread ×{count}",
+    "cd": { "base": 0.91, "perLvl": 0.04, "min": 0.55 },
+    "dmg": { "base": 7, "perLvl": 0.14 },
+    "count": { "base": 3, "per": 0.5 },
+    "speed": 150, "spreadStep": 0.16, "slow": 1.2, "ci": 1
+  },
+  {
+    "id": "orbit", "glyph": "✦", "name": "Orbiting Fang",
+    "type": "orbit", "resource": "none", "cost": 0,
+    "desc": "{blades} blade(s) circle you, cutting everything they sweep",
+    "cd": { "base": 999 },
+    "dmg": { "base": 19, "perLvl": 0.2 },
+    "blades": { "base": 1, "per": 0.5 }
+  },
+  {
+    "id": "saber", "glyph": "⚔", "name": "Aether Saber",
+    "type": "saber", "resource": "none", "cost": 0,
+    "desc": "{blades} plasma blade(s) sweep around you, deflecting bolts",
+    "cd": { "base": 999 },
+    "dmg": { "base": 18, "flat": 4 },
+    "blades": { "base": 1, "per": 0.5 }
+  },
+  {
+    "id": "fireball", "glyph": "❂", "name": "Fireball",
+    "type": "aimed", "resource": "spell", "cost": 9,
+    "desc": "Explodes in a {boom}px blaze",
+    "cd": { "base": 1.44, "perLvl": 0.06, "min": 0.85 },
+    "dmg": { "base": 18, "perLvl": 0.2 },
+    "count": { "base": 1 },
+    "boom": { "base": 18, "flat": 1.5 }, "boomDmgFrac": 0.9,
+    "speed": 125, "r": 2.5, "ci": 0
+  },
+  {
+    "id": "chain", "glyph": "⌁", "name": "Chain Lightning",
+    "type": "chain", "resource": "spell", "cost": 8,
+    "desc": "Zaps {hops} chained foes",
+    "cd": { "base": 1.19, "perLvl": 0.06, "min": 0.65 },
+    "dmg": { "base": 13, "perLvl": 0.16 },
+    "hops": { "base": 2, "per": 0.5 },
+    "range": 75
+  },
+  {
+    "id": "smite", "glyph": "✞", "name": "Sky Smite",
+    "type": "smite", "resource": "spell", "cost": 12,
+    "desc": "Holy blast: {dmg} dmg AoE on a foe",
+    "cd": { "base": 1.72, "perLvl": 0.08, "min": 1.0 },
+    "dmg": { "base": 24, "flat": 4 },
+    "boom": { "base": 16, "flat": 1 }
+  },
+  {
+    "id": "venom", "glyph": "☠", "name": "Venom Coil",
+    "type": "aimed", "resource": "spell", "cost": 3,
+    "desc": "Toxic darts: {pois} dmg/s poison",
+    "cd": { "base": 0.87, "perLvl": 0.03, "min": 0.5 },
+    "dmg": { "base": 4 },
+    "count": { "base": 2 },
+    "pois": { "base": 6.5, "flat": 1.5 },
+    "speed": 160, "spreadStep": 0.14, "ci": 4
+  },
+  {
+    "id": "sigil", "glyph": "◈", "name": "Void Sigil",
+    "type": "zone", "resource": "spell", "cost": 14,
+    "desc": "Rift zone · {radius}px, {dps} dmg/s for 3s",
+    "cd": { "base": 2.3, "perLvl": 0.1, "min": 1.4 },
+    "dmg": { "base": 20, "flat": 4 },
+    "radius": { "base": 15.5, "flat": 1.5 },
+    "duration": 3
+  },
+  {
+    "id": "bomb", "glyph": "⦿", "name": "Plasma Lob",
+    "type": "lob", "resource": "tech", "cost": 16,
+    "desc": "Lobbed charge · {boom}px blast",
+    "cd": { "base": 1.92, "perLvl": 0.08, "min": 1.1 },
+    "dmg": { "base": 24, "perLvl": 0.2 },
+    "boom": { "base": 24, "flat": 2 }, "impactFrac": 0.3,
+    "speed": 110, "maxRange": 170, "r": 2.5, "ci": 5
+  },
+  {
+    "id": "scatter", "glyph": "⋙", "name": "Flak Cannon",
+    "type": "scatter", "resource": "tech", "cost": 7,
+    "desc": "{count} shrapnel pellets, brutal up close",
+    "cd": { "base": 0.96, "perLvl": 0.04, "min": 0.55 },
+    "dmg": { "base": 7, "perLvl": 0.14 },
+    "count": { "base": 7, "per": 1 },
+    "speedMin": 150, "speedMax": 210, "spread": 0.4, "ttl": 0.38, "ci": 1
+  }
+]

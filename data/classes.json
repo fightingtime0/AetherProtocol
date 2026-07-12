@@ -1,0 +1,56 @@
+[
+  {
+    "id": "arc", "glyph": "☄", "name": "Arcanist", "cost": 0,
+    "theme": "Fantasy · glass-cannon mage",
+    "weapon": "bolt",
+    "stats": { "dmgM": 1.25, "maxhp": -20 }
+  },
+  {
+    "id": "tem", "glyph": "✚", "name": "Templar", "cost": 0,
+    "theme": "Fantasy · holy bulwark",
+    "weapon": "orbit",
+    "stats": { "maxhp": 40, "regen": 1, "spd": 0.90, "armor": 1 }
+  },
+  {
+    "id": "hex", "glyph": "✸", "name": "Hexblade", "cost": 0,
+    "theme": "Fantasy · cursed duelist",
+    "weapon": "venom",
+    "stats": { "crit": 0.15, "greed": 1.15 }
+  },
+  {
+    "id": "voi", "glyph": "»", "name": "Voidrunner", "cost": 0,
+    "theme": "Sci-fi · phase skirmisher",
+    "weapon": "frost",
+    "stats": { "spd": 1.18, "dashCd": 0.70, "maxhp": -15 }
+  },
+  {
+    "id": "tec", "glyph": "⚡", "name": "Technomancer", "cost": 0,
+    "theme": "Sci-fi · overclocked artificer",
+    "weapon": "rail",
+    "stats": { "cdM": 0.85, "bspdM": 1.15, "energyMax": 20, "shieldMax": 15, "maxhp": -10 }
+  },
+  {
+    "id": "bld", "glyph": "⚔", "name": "Blademaster", "cost": 500,
+    "theme": "Unlock · relentless duelist",
+    "weapon": "saber",
+    "stats": { "dmgM": 1.15, "spd": 1.15, "crit": 0.10, "maxhp": -15 }
+  },
+  {
+    "id": "nec", "glyph": "☠", "name": "Necromancer", "cost": 650,
+    "theme": "Unlock · master of servitors",
+    "weapon": "seeker",
+    "stats": { "droneHpM": 1.6, "greed": 1.2 }
+  },
+  {
+    "id": "art", "glyph": "⦿", "name": "Artillerist", "cost": 800,
+    "theme": "Unlock · walking siege engine",
+    "weapon": "bomb",
+    "stats": { "dmgM": 1.2, "maxhp": 25, "energyMax": 30, "armor": 1, "spd": 0.90 }
+  },
+  {
+    "id": "chr", "glyph": "✹", "name": "Chronomancer", "cost": 1000,
+    "theme": "Unlock · bends time itself",
+    "weapon": "sigil",
+    "stats": { "cdM": 0.85, "manaRegen": 1.4, "dashCd": 0.75 }
+  }
+]

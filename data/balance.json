@@ -1,0 +1,61 @@
+{
+  "player": {
+    "hp": 100,
+    "speed": 66,
+    "hitboxRadius": 3,
+    "dashCooldown": 2.2,
+    "dashDuration": 0.22,
+    "dashInvuln": 0.28,
+    "dashSpeedMult": 3.1,
+    "mana": 100,
+    "manaRegen": 4.5,
+    "energy": 100,
+    "energyRecharge": 30,
+    "pickupRadius": 7,
+    "minMaxHp": 40,
+    "reviveHpFrac": 0.6,
+    "shield": { "regenDelay": 4, "regenRate": 12 },
+    "surge": { "mult": 1.25, "duration": 2.5 },
+    "auraRadius": 75
+  },
+  "combat": {
+    "orbit":  { "radius": 18, "arc": 0.5,  "tickMult": 3.5, "spinSpeed": 3.4 },
+    "saber":  { "reach": 24,  "arc": 0.45, "tickMult": 3.2, "spinSpeed": 7, "deflectArc": 0.38, "deflectMin": 6 },
+    "drones": { "maxPerPlayer": 2, "speed": 85, "returnSpeed": 70, "leashDist": 24,
+                "contactTick": 3, "clawDamage": 4, "clawCooldown": 0.5, "bulletDamage": 8 },
+    "contactDamage": { "boss": 24, "meleeDash": 16, "mini": 18, "base": 11 },
+    "enemyBulletDamage": 10,
+    "critMult": 2
+  },
+  "waves": {
+    "budgetBase": 4,
+    "budgetPerWave": 2.1,
+    "playerBase": 0.7,
+    "playerFactor": 0.35,
+    "bossEvery": 5,
+    "interludeEvery": 3,
+    "guardianAfterSec": 40,
+    "guardianMinWave": 3,
+    "pickSeconds": 30,
+    "slotWaves": [5, 10],
+    "spawnTrickleSec": 0.45,
+    "enemyHpPerWave": 0.15,
+    "miniHpPerWave": 0.06,
+    "bossHpPerWave": 0.1
+  },
+  "objectives": {
+    "chance": 0.65,
+    "minWave": 2,
+    "rewardBase": 12,
+    "rewardPerWave": 3,
+    "slay":    { "goalBase": 8, "goalPerWave": 2, "time": 30 },
+    "notouch": { "time": 18 },
+    "zone":    { "holdSeconds": 10, "time": 40, "radius": 34 },
+    "speed":   { "clearSeconds": 40 },
+    "greed":   { "goalBase": 25, "goalPerWave": 7, "time": 50 }
+  },
+  "economy": {
+    "metaCostGrowth": 1.85,
+    "waveClearScore": 50
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "normal": {
+    "name": "NORMAL",
+    "desc": "A calm descent · relaxed pacing, gentler foes — perfect for casual play.",
+    "worldW": 1280, "worldH": 720,
+    "obstacles": 30, "obstacleRadius": [7, 14],
+    "budget": 0.85, "enemyHp": 0.85, "shardMult": 0.85,
+    "enemyDamage": 0.85, "aggression": 0.92,
+    "bigBossEvery": 0, "titanEvery": 0
+  },
+  "scenario": {
+    "name": "SCENARIO",
+    "desc": "Aggressive, dense hordes · huge terrain · BIG BOSS every 10 waves · +15% shards.",
+    "worldW": 1280, "worldH": 720,
+    "obstacles": 55, "obstacleRadius": [9, 22],
+    "budget": 1.6, "enemyHp": 1.5, "shardMult": 1.15,
+    "enemyDamage": 1.2, "aggression": 1.15,
+    "bigBossEvery": 10, "titanEvery": 0
+  },
+  "infinity": {
+    "name": "TO INFINITY",
+    "desc": "Vast open void, no cover · brutal, relentless waves · the TITAN every 10 waves · +35% shards.",
+    "worldW": 1920, "worldH": 1080,
+    "obstacles": 0, "obstacleRadius": [0, 0],
+    "budget": 2.2, "enemyHp": 1.9, "shardMult": 1.35,
+    "enemyDamage": 1.4, "aggression": 1.3,
+    "bigBossEvery": 0, "titanEvery": 10
+  }
+}
