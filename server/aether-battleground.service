@@ -10,7 +10,11 @@ ExecStart=/usr/bin/node index.js
 Environment=PORT=8080
 Restart=always
 RestartSec=3
-User=aether
+# Run as whichever user owns the checkout — if that's a home directory (e.g.
+# /home/<you>/...), a separate system user usually can't even cd into it,
+# since home dirs are typically mode 700. Simplest correct answer for a
+# single-user VM: use your own account here (see README step 5).
+User=opc
 # Hardening: the process only needs to read its own repo checkout and talk on the network
 NoNewPrivileges=true
 ProtectSystem=full

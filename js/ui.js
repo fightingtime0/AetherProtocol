@@ -282,8 +282,14 @@ function initUI(){
   $('btnJoin').onclick=()=>{saveName();show('scrLobby');startJoin();};
   $('bgUrlInput').value=save.bgUrl||'';
   $('btnBattleground').onclick=()=>{
-    const url=$('bgUrlInput').value.trim()||save.bgUrl;
+    let url=$('bgUrlInput').value.trim()||save.bgUrl;
     if(!url){toast('Enter your Battleground server address first');return;}
+    // a bare hostname (no ws://+wss://) isn't an error the WebSocket API rejects —
+    // it silently resolves as a RELATIVE path on this page's own origin instead,
+    // which looks like "it connected" but is actually talking to nothing. Normalize
+    // it here so that footgun can't happen, and heal any bad value saved earlier.
+    if(!/^wss?:\/\//i.test(url)) url='wss://'+url;
+    $('bgUrlInput').value=url;
     save.bgUrl=url; persist(); saveName(); show('scrLobby'); startBattleground(url);
   };
   $('btnConnect').onclick=()=>{const c=$('codeInput').value.trim().toUpperCase();if(c.length===4)connectTo(c);};
