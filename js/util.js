@@ -16,7 +16,7 @@ const now=()=>performance.now();
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 let save={shards:0,best:0,meta:{},name:'',sprite:null,records:[],cls:'arc',diff:'normal',
-  unlocked:['arc','tem','hex','voi','tec']};
+  mute:false,unlocked:['arc','tem','hex','voi','tec']};
 try{ const r=lsGet('aetherv2'); if(r) save=Object.assign(save,JSON.parse(r)); }catch(e){}
 if(!Array.isArray(save.unlocked)||!save.unlocked.length) save.unlocked=['arc','tem','hex','voi','tec'];
 function persist(){ lsSet('aetherv2',JSON.stringify(save)); }

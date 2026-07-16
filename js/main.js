@@ -9,10 +9,10 @@ function loop(){
   if(mode==='play'){
     moveLocal(dt);
     if(role!=='client'&&S&&!S.over){ hostUpdate(dt);
-      snapAcc+=dt; if(snapAcc>=.066&&conns.length){snapAcc=0;bcast(snap());}
+      snapAcc+=dt; if(snapAcc>=.05&&conns.length){snapAcc=0;bcast(snap());} // 20Hz snapshots
       pruneAcc+=dt; if(pruneAcc>=2){pruneAcc=0;pruneStalePeers();} }
     if(role==='client'){ sendAcc+=dt;
-      if(sendAcc>=.05&&conns[0]&&conns[0].open){sendAcc=0;
+      if(sendAcc>=.033&&conns[0]&&conns[0].open){sendAcc=0;                 // 30Hz input
         conns[0].send({t:'in',x:Math.round(myPos.x),y:Math.round(myPos.y),inv:myPos.inv>0?1:0});}}
     updateHUD();
   }

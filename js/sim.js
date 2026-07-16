@@ -30,7 +30,7 @@ function applyMetaObj(p,m){
 function newSim(playersInfo){
   obstacles=genWorld();
   eidc=1;
-  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],obj:null,
+  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],obj:null,sx:[],
      wave:0,score:0,t:0,waveT:0,
      spawnQ:[],spawnT:0,waveDone:false,miniSpawned:false,over:false,shake:0};
   playersInfo.forEach(pi=>{
@@ -57,11 +57,12 @@ function nextWave(){
   for(const p of S.players.values()) if(p.dead){ p.dead=false; p.hp=p.maxhp*BAL.player.reviveHpFrac; p.inv=2;
     const alive=[...S.players.values()].find(q=>!q.dead&&q!==p);
     if(alive){p.x=alive.x+rnd(-20,20);p.y=alive.y+rnd(-20,20);} }
+  sfxE('wave');
   if(D.titanEvery&&w%D.titanEvery===0&&ETI.titan!==undefined){
     const t=mkBoss('titan',w,np);
     S.spawnQ.push(t);
     for(let i=0;i<4+np;i++) S.spawnQ.push(mkE('wisp'));
-    toastAll('⚠⚠ THE TITAN AWAKENS ⚠⚠');
+    toastAll('⚠⚠ THE TITAN AWAKENS ⚠⚠'); sfxE('boss');
   }else if(w%WV.bossEvery===0){
     const bk=bossKeyFor(w);
     const b=mkBoss(bk,w,np);
@@ -69,7 +70,7 @@ function nextWave(){
       b.hp*=2.2; b.maxhp*=2.2; b.scl=2; b.r*=1.8; b.spd*=.85;
       toastAll('⚠ A BIG BOSS descends!');
     }
-    S.spawnQ.push(b);
+    S.spawnQ.push(b); sfxE('boss');
     const mn=BOSS_MINION[bk];
     if(mn) for(let i=0;i<2+np;i++) S.spawnQ.push(mkE(mn)); // boss escort
     for(let i=0;i<Math.min(6,Math.floor(w/WV.bossEvery)*2+np);i++) S.spawnQ.push(mkE('imp'));
@@ -125,8 +126,8 @@ function objDone(v){
   const o=S.obj; if(!o||o.done)return;
   o.done=v;
   if(v===1){ for(const p of S.players.values())p.shards+=o.rew;
-    toastAll('◎ OBJECTIVE COMPLETE · +◆'+o.rew+' each'); }
-  else toastAll('◎ objective failed');
+    toastAll('◎ OBJECTIVE COMPLETE · +◆'+o.rew+' each'); sfxE('objwin'); }
+  else{ toastAll('◎ objective failed'); sfxE('objfail'); }
 }
 
 /* ---------------- damage ---------------- */
@@ -140,18 +141,19 @@ function hurt(p,amt){
   if(p.shield>0){                                // shield soaks before HP
     const abs=Math.min(p.shield,amt); p.shield-=abs; amt-=abs;
     for(let i=0;i<6;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-45,45),vy:rnd(-45,45),l:.3,ci:'#4ef0e8'});
+    sfxE('shield');
     if(amt<=0)return;
   }
-  p.hp-=amt;
+  p.hp-=amt; sfxE('hurt');
   for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
-  if(p.hp<=0){ p.hp=0; p.dead=true; toastAll(p.name+' is down!');
+  if(p.hp<=0){ p.hp=0; p.dead=true; toastAll(p.name+' is down!'); sfxE('down');
     if([...S.players.values()].every(q=>q.dead)) runOver(); }
 }
 function toastAll(m){ toast(m); bcast({t:'ts',m}); }
 function damageE(e,dmg,owner,quiet){
-  e.hp-=dmg; if(!quiet)e.flash=.08;
+  e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit');}
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
-    S.score+=e.sc;
+    S.score+=e.sc; sfxE(e.boss?'bosskill':'kill');
     const p=S.players.get(owner);
     const sh=Math.round(e.sh*(p?p.st.greed:1)*DIFF().shardMult);
     if(p){ p.shards+=sh;
@@ -287,7 +289,7 @@ function hostUpdate(dt){
     S.miniSpawned=true;
     const minis=ET.filter(T=>T.mini);
     if(minis.length){ S.en.push(mkE(minis[irnd(0,minis.length)].id));
-      toastAll('⚠ A guardian stirs…'); }
+      toastAll('⚠ A guardian stirs…'); sfxE('boss'); }
   }
   // weapons fire (all players)
   for(const p of S.players.values()){
@@ -317,6 +319,7 @@ function hostUpdate(dt){
         const od=p.st.dmgM; p.st.dmgM=od*p.dmgBoost;
         def.fire(p,w,tg);
         p.st.dmgM=od;
+        sfxE(def.rt==='tech'?'shootT':'shoot');
       }
     }
     p.orbA=(p.orbA||0)+dt*CB.orbit.spinSpeed;
@@ -409,7 +412,7 @@ function hostUpdate(dt){
       if(dd>CB.saber.deflectMin&&dd<CB.saber.reach){ const ba=Math.atan2(b.y-p.y,b.x-p.x);
         for(let i=0;i<p.sabN;i++){ let da=ba-(p.sabA+i/p.sabN*TAU);
           da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.saber.deflectArc){ b.dead=true;
+          if(Math.abs(da)<CB.saber.deflectArc){ b.dead=true; sfxE('deflect');
             S.fx.push({x:b.x,y:b.y,vx:rnd(-30,30),vy:rnd(-30,30),l:.2,ci:'#7cff6b'}); break; } } }
       if(b.dead)break; }
     // servitors soak enemy fire
@@ -418,7 +421,7 @@ function hostUpdate(dt){
         S.fx.push({x:dn.x,y:dn.y,vx:rnd(-25,25),vy:rnd(-25,25),l:.25,ci:'#4ef0e8'}); break; } }
     if(!b.dead)for(const p of S.players.values()){if(p.dead)continue;
       if(Math.hypot(b.x-p.x,b.y-p.y)<b.r+p.r){b.dead=true;
-        if(p.inv>0){ p.surgeT=PB.surge.duration; // phase surge: absorb a bolt with i-frames
+        if(p.inv>0){ p.surgeT=PB.surge.duration; sfxE('surge'); // phase surge: absorb a bolt with i-frames
           for(let i=0;i<5;i++)S.fx.push({x:b.x,y:b.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.3,ci:'#ffd35c'}); }
         else hurt(p,CB.enemyBulletDamage);
         break;}}
@@ -429,9 +432,9 @@ function hostUpdate(dt){
     for(const p of S.players.values()){if(p.dead)continue;
       if(Math.hypot(it.x-p.x,it.y-p.y)<(p.st.mag||7)){
         it.dead=true;
-        if(it.k===0){p.hp=Math.min(p.maxhp,p.hp+it.v);if(p.id===myId)toast('+'+it.v+' HP');else sendTo(p.id,{t:'ts',m:'+'+it.v+' HP'});}
-        else if(it.k===1){p.shards+=it.v;}
-        else if(it.k===2){openChest(p);}
+        if(it.k===0){p.hp=Math.min(p.maxhp,p.hp+it.v);sfxE('heal');if(p.id===myId)toast('+'+it.v+' HP');else sendTo(p.id,{t:'ts',m:'+'+it.v+' HP'});}
+        else if(it.k===1){p.shards+=it.v;sfxE('shard');}
+        else if(it.k===2){openChest(p);sfxE('chest');}
         break;}}}
   S.it=S.it.filter(i=>!i.dead);
   // fx
@@ -476,7 +479,7 @@ function runOver(){
     c.send({t:'go',wave:S.wave,score:S.score,shards:p?p.shards:0}); }
 }
 function finishRun(wave,score,shards){
-  mode='dead';
+  mode='dead'; sfx('gameover');
   save.shards+=shards;
   if(wave>save.best)save.best=wave;
   save.records=save.records||[];

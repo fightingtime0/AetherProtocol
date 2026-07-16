@@ -11,6 +11,7 @@ addEventListener('keyup',e=>keys[e.code]=false);
 function tryDash(){
   if(myPos.dashT>0||myPos.dead)return;
   myPos.dashT=myPos.dcd; myPos.dashing=BAL.player.dashDuration; myPos.inv=BAL.player.dashInvuln;
+  sfx('dash');
 }
 function moveLocal(dt){
   if(myPos.dead)return;
@@ -30,13 +31,14 @@ function moveLocal(dt){
 /* ---------------- pick UI ---------------- */
 let pickDeadline=0;
 function showPickUI(views,dl,owned){
-  pickDeadline=dl;
+  pickDeadline=dl; sfx('pick');
   const el=$('pickCards'); el.innerHTML='';
   views.forEach((v,i)=>{
     const c=document.createElement('button'); c.className='card rar-'+(v.rar||'c');
     c.innerHTML=`<div class="ctag">${v.tag}</div><div class="glyph">${v.g}</div>`+
       `<div class="cname">${v.n}</div><div class="cdesc">${v.d}</div>`;
     c.onclick=()=>{
+      sfx('choose');
       if(role==='client'){conns[0]&&conns[0].send({t:'ck',i});}
       else{const p=S.players.get(myId);resolvePick(p,i);}
     };
@@ -232,6 +234,7 @@ function initUI(){
   $('btnHost').onclick=()=>{saveName();show('scrLobby');startHost();};
   $('btnJoin').onclick=()=>{saveName();show('scrLobby');startJoin();};
   $('btnConnect').onclick=()=>{const c=$('codeInput').value.trim().toUpperCase();if(c.length===4)connectTo(c);};
+  $('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('btnConnect').onclick();});
   $('btnCopyCode').onclick=()=>{try{navigator.clipboard.writeText(roomCode);toast('Code copied');}catch(e){}};
   $('btnLobbyBack').onclick=()=>{ resetNet(); role='solo'; show('scrTitle'); };
   $('btnMpStart').onclick=()=>{

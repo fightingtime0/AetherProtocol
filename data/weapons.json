@@ -57,7 +57,7 @@
     "desc": "{blades} plasma blade(s) sweep around you, deflecting bolts",
     "cd": { "base": 999 },
     "dmg": { "base": 18, "flat": 4 },
-    "blades": { "base": 1, "per": 0.5 }
+    "blades": { "base": 1, "per": 1 }
   },
   {
     "id": "fireball", "glyph": "❂", "name": "Fireball",

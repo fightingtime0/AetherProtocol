@@ -12,7 +12,7 @@ function boom(x,y,r,dmg,owner,col){
   for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-x,e.y-y)<r+e.r) damageE(e,dmg,owner);
   for(let i=0;i<16;i++){const a=rnd(0,TAU),sp=rnd(30,95);
     S.fx.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,l:.35,ci:col||'#ff9d3c'});}
-  S.shake=Math.max(S.shake,.12);
+  S.shake=Math.max(S.shake,.12); sfxE('boom');
 }
 
 function wDmg(def,w,p){ return scaleVal(def.dmg,w.lvl)*RARS[w.rar].dm*p.st.dmgM; }
