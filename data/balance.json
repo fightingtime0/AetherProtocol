@@ -57,5 +57,11 @@
   "economy": {
     "metaCostGrowth": 1.85,
     "waveClearScore": 50
+  },
+  "battleground": {
+    "respawnDelay": 3,
+    "respawnInvuln": 10,
+    "pvpDamageMult": 1,
+    "waveCap": 60
   }
 }

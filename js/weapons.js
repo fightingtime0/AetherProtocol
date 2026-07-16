@@ -7,7 +7,7 @@
    Types: aimed, radial, lance, scatter, lob, chain, smite,
           zone, drone, orbit (passive), saber (passive)
    ============================================================ */
-function pbul(o){ S.pb.push(Object.assign({r:1.5,ttl:2.4,pierce:0,ci:0,home:0,slow:0},o)); }
+function pbul(o){ S.pb.push(Object.assign({id:bidc++,r:1.5,ttl:2.4,pierce:0,ci:0,home:0,slow:0},o)); }
 function boom(x,y,r,dmg,owner,col){
   for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-x,e.y-y)<r+e.r) damageE(e,dmg,owner);
   for(let i=0;i<16;i++){const a=rnd(0,TAU),sp=rnd(30,95);

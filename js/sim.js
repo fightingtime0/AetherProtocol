@@ -10,7 +10,7 @@ function mkPlayer(id,name,sprite,cls){
   const c=CLS(cls), PB=BAL.player;
   const p={id,name,sprite,img:spriteToCanvas(sprite),
     x:WW/2+rnd(-30,30),y:WH/2+rnd(-30,30),r:PB.hitboxRadius,
-    hp:PB.hp,maxhp:PB.hp,inv:0,dead:false,shards:0,pickUntil:0,pickOpts:null,cls:c.id,
+    hp:PB.hp,maxhp:PB.hp,inv:0,dead:false,shards:0,pickUntil:0,pickInvUntil:0,pickOpts:null,cls:c.id,
     mana:PB.mana,manaMax:PB.mana,energy:PB.energy,energyMax:PB.energy,eLock:false,
     armor:0,shield:0,shieldMax:0,shieldCd:0,
     surgeT:0,dmgBoost:1,auraR:0,orbN:0,sabN:0,orbA:rnd(0,TAU),sabA:rnd(0,TAU),
@@ -22,17 +22,35 @@ function mkPlayer(id,name,sprite,cls){
 }
 function applyMetaObj(p,m){
   m=m||{};
+  p.metaObj=m; // stashed so a persistent-mode respawn can rebuild this player from scratch
   for(const def of META) applyStats(p,def.stats,m[def.id]||0); // Sanctum ranks
   applyStats(p,CLS(p.cls).stats);                              // class after meta
   p.maxhp=Math.max(BAL.player.minMaxHp,p.maxhp);
   p.hp=p.maxhp; p.mana=p.manaMax; p.energy=p.energyMax; p.shield=p.shieldMax;
 }
-function newSim(playersInfo){
+// Battleground (persistent PvPvE) respawn: brand-new player object built the same
+// way a fresh join is (0 upgrades, base stats), not the old one patched in place —
+// applyStats() only ever adds on top of the current value, so reusing the live
+// object would double-apply class/Sanctum bonuses on every death.
+function respawnPersistent(p){
+  const shards=p.shards;
+  const np=mkPlayer(p.id,p.name,p.sprite,p.cls);
+  applyMetaObj(np,p.metaObj);
+  np.x=rnd(20,WW-20); np.y=rnd(20,WH-20); // infinity/Battleground has no obstacles to dodge
+  np.shards=shards;
+  np.inv=(BAL.battleground&&BAL.battleground.respawnInvuln)||10;
+  S.players.set(p.id,np);
+}
+function newSim(playersInfo,opts){
   obstacles=genWorld();
-  eidc=1;
+  eidc=1; bidc=1;
   S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],obj:null,sx:[],
      wave:0,score:0,t:0,waveT:0,
-     spawnQ:[],spawnT:0,waveDone:false,miniSpawned:false,over:false,shake:0};
+     spawnQ:[],spawnT:0,waveDone:false,miniSpawned:false,over:false,shake:0,
+     // Battleground mode only: pvp = player bullets can hurt other players;
+     // persistent = deaths respawn (fresh loadout, random spot) instead of
+     // ending the run — see hurt() and respawnPersistent().
+     pvp:!!(opts&&opts.pvp), persistent:!!(opts&&opts.persistent)};
   playersInfo.forEach(pi=>{
     const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
     applyMetaObj(p, pi.id===myId?save.meta:pi.meta);
@@ -50,13 +68,20 @@ function scatterItems(n){
 
 /* ---------------- waves ---------------- */
 function nextWave(){
-  S.wave++; S.waveDone=false; S.waveT=0; S.miniSpawned=false;
+  S.wave++;
+  // a persistent Battleground session never ends, so cap the wave number that
+  // feeds the difficulty math — otherwise budget/HP scaling runs away after
+  // enough real-world uptime and the wave becomes unplayable (or unspawnable).
+  if(S.persistent){ const cap=(BAL.battleground&&BAL.battleground.waveCap)||60;
+    if(S.wave>cap)S.wave=cap; }
+  S.waveDone=false; S.waveT=0; S.miniSpawned=false;
   S.spawnQ=[]; S.spawnT=0;
   const w=S.wave, np=S.players.size, D=DIFF(), WV=BAL.waves;
-  // revive dead players
-  for(const p of S.players.values()) if(p.dead){ p.dead=false; p.hp=p.maxhp*BAL.player.reviveHpFrac; p.inv=2;
-    const alive=[...S.players.values()].find(q=>!q.dead&&q!==p);
-    if(alive){p.x=alive.x+rnd(-20,20);p.y=alive.y+rnd(-20,20);} }
+  // revive dead players (Battleground/persistent handles its own respawn timer instead)
+  if(!S.persistent)
+    for(const p of S.players.values()) if(p.dead){ p.dead=false; p.hp=p.maxhp*BAL.player.reviveHpFrac; p.inv=2;
+      const alive=[...S.players.values()].find(q=>!q.dead&&q!==p);
+      if(alive){p.x=alive.x+rnd(-20,20);p.y=alive.y+rnd(-20,20);} }
   sfxE('wave');
   if(D.titanEvery&&w%D.titanEvery===0&&ETI.titan!==undefined){
     const t=mkBoss('titan',w,np);
@@ -132,7 +157,7 @@ function objDone(v){
 
 /* ---------------- damage ---------------- */
 function hurt(p,amt){
-  if(p.inv>0||p.dead||now()<p.pickUntil)return;
+  if(p.inv>0||p.dead||now()<p.pickInvUntil)return;
   amt=Math.round(amt*(DIFF().enemyDamage||1));   // difficulty scaling
   amt=Math.max(1,amt-(p.armor||0));              // armor: flat reduction per hit
   p.shieldCd=BAL.player.shield.regenDelay;       // any hit delays shield regen
@@ -147,7 +172,36 @@ function hurt(p,amt){
   p.hp-=amt; sfxE('hurt');
   for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
   if(p.hp<=0){ p.hp=0; p.dead=true; toastAll(p.name+' is down!'); sfxE('down');
-    if([...S.players.values()].every(q=>q.dead)) runOver(); }
+    if(S.persistent) p.respawnAt=now()+((BAL.battleground&&BAL.battleground.respawnDelay)||3)*1000;
+    else if([...S.players.values()].every(q=>q.dead)) runOver(); }
+}
+// a remote client's own screen decided this bullet/enemy touched them — host
+// still owns the CONSEQUENCE (i-frames, phase surge, armor/shield math all
+// live inside hurt()), it just replays the same rules the automatic host-side
+// checks use for the local player, keyed off whatever the client saw land.
+function applyClientHit(p,kind,id){
+  if(!p||p.dead)return;
+  const PB=BAL.player, CB=BAL.combat;
+  if(kind==='b'){
+    const b=S.eb.find(b2=>b2.id===id&&!b2.dead);
+    if(!b)return;
+    b.dead=true;
+    if(p.inv>0){ p.surgeT=PB.surge.duration; sfxE('surge');
+      for(let i=0;i<5;i++)S.fx.push({x:b.x,y:b.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.3,ci:'#ffd35c'});
+    }else hurt(p,CB.enemyBulletDamage);
+  }else if(kind==='m'){
+    const e=S.en.find(e2=>e2.id===id&&e2.hp>0);
+    if(!e)return;
+    const melee=ET[ETI[e.k]].meleeDash&&e.st===2;
+    const CD=CB.contactDamage;
+    hurt(p,e.boss?CD.boss:melee?CD.meleeDash:e.mini?CD.mini:CD.base);
+  }else if(kind==='p'){ // Battleground PvP: another player's bullet touched me
+    if(!S.pvp)return;
+    const b=S.pb.find(b2=>b2.id===id&&!b2.dead&&b2.owner!==p.id);
+    if(!b)return;
+    b.dead=true;
+    hurt(p,b.dmg*((BAL.battleground&&BAL.battleground.pvpDamageMult)||1));
+  }
 }
 function toastAll(m){ toast(m); bcast({t:'ts',m}); }
 function damageE(e,dmg,owner,quiet){
@@ -156,9 +210,12 @@ function damageE(e,dmg,owner,quiet){
     S.score+=e.sc; sfxE(e.boss?'bosskill':'kill');
     const p=S.players.get(owner);
     const sh=Math.round(e.sh*(p?p.st.greed:1)*DIFF().shardMult);
-    if(p){ p.shards+=sh;
+    if(p&&sh>0){
+      // drop a collectible shard orb instead of an instant credit — anyone can walk over it
+      S.it.push({k:1,x:e.x+rnd(-4,4),y:e.y+rnd(-4,4),v:sh});
       if(p.st.tithe>0){ const bonus=Math.round(sh*p.st.tithe);
-        if(bonus>0)for(const q of S.players.values())if(q!==p)q.shards+=bonus; } }
+        if(bonus>0)for(const q of S.players.values())if(q!==p)q.shards+=bonus; }
+    }
     if(S.obj&&!S.obj.done){
       if(S.obj.ty==='slay')S.obj.prog++;
       else if(S.obj.ty==='greed')S.obj.prog+=sh;
@@ -216,6 +273,9 @@ function ownedView(p){return p.weapons.map(w=>({g:WPN[w.id].g,n:WPN[w.id].n,lvl:
 function startPick(p,keepDeadline){
   p.pickOpts=genOpts(p);
   if(!keepDeadline) p.pickUntil=now()+BAL.waves.pickSeconds*1000;
+  // invincibility + weapon-pause only lasts 10s, not the whole decision window —
+  // player keeps moving and the rest of the battle keeps running around them
+  p.pickInvUntil=now()+10000;
   if(p.id===myId) showPickUI(p.pickOpts.map(optView),p.pickUntil,ownedView(p));
   else sendTo(p.id,{t:'pk',opts:p.pickOpts.map(optView),dl:p.pickUntil,own:ownedView(p)});
 }
@@ -249,11 +309,10 @@ function openChest(p){
 
 /* ---------------- host tick ---------------- */
 function hostUpdate(dt){
-  // FULL FREEZE while any player is attuning
-  let anyPicking=false;
-  for(const p of S.players.values()) if(p.pickOpts){anyPicking=true;
-    if(now()>=p.pickUntil) resolvePick(p,0); }
-  if(anyPicking) return;
+  // NOTE: attuning no longer freezes the world — the picking player gets a
+  // capped invincibility+weapon-pause window (pickInvUntil) instead, and
+  // everyone/everything else keeps moving. See "picks timeout" below for
+  // the deadline auto-resolve.
   S.t+=dt; S.waveT+=dt;
   const PB=BAL.player, CB=BAL.combat;
   // local player position
@@ -261,6 +320,7 @@ function hostUpdate(dt){
   if(me&&!me.dead){ me.x=myPos.x; me.y=myPos.y;
     if(myPos.inv>0)me.inv=Math.max(me.inv,.1); }
   for(const p of S.players.values()){
+    if(S.persistent&&p.dead&&p.respawnAt&&now()>=p.respawnAt){ respawnPersistent(p); continue; }
     p.inv=Math.max(0,p.inv-dt);
     p.surgeT=Math.max(0,p.surgeT-dt);
     // co-op support auras from nearby allies
@@ -378,7 +438,10 @@ function hostUpdate(dt){
   for(const e of S.en){ enemyAct(e,dt); e.flash=Math.max(0,e.flash-dt);
     if(e.poisT>0){ e.poisT-=dt; damageE(e,e.poisD*dt,e.poisBy,true);
       if(Math.random()<dt*8)S.fx.push({x:e.x+rnd(-3,3),y:e.y+rnd(-3,3),vx:0,vy:-14,l:.4,ci:'#7cff6b'}); }
-    for(const p of S.players.values()){ if(p.dead)continue;
+    // contact damage: only auto-applied to the host's own local player — remote
+    // players self-report contact from their own screen (see applyClientHit)
+    // so nobody takes a hit that hadn't reached them yet on their own client.
+    for(const p of S.players.values()){ if(p.dead||p.id!==myId)continue;
       const d=Math.hypot(e.x-p.x,e.y-p.y);
       if(d<e.r+p.r+1){
         const melee=ET[ETI[e.k]].meleeDash&&e.st===2;
@@ -419,7 +482,11 @@ function hostUpdate(dt){
     if(!b.dead)for(const dn of S.dr){
       if(Math.hypot(b.x-dn.x,b.y-dn.y)<b.r+3){ b.dead=true; dn.hp-=DR.bulletDamage;
         S.fx.push({x:dn.x,y:dn.y,vx:rnd(-25,25),vy:rnd(-25,25),l:.25,ci:'#4ef0e8'}); break; } }
-    if(!b.dead)for(const p of S.players.values()){if(p.dead)continue;
+    // same self-report split as contact damage above: host only auto-resolves
+    // bullet hits against its own local player; remote players' clients detect
+    // the overlap against what THEY render (see checkLocalHits/'hit' message)
+    // and report it, which is what applyClientHit() replays below.
+    if(!b.dead)for(const p of S.players.values()){if(p.dead||p.id!==myId)continue;
       if(Math.hypot(b.x-p.x,b.y-p.y)<b.r+p.r){b.dead=true;
         if(p.inv>0){ p.surgeT=PB.surge.duration; sfxE('surge'); // phase surge: absorb a bolt with i-frames
           for(let i=0;i<5;i++)S.fx.push({x:b.x,y:b.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.3,ci:'#ffd35c'}); }

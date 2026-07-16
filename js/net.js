@@ -31,8 +31,8 @@ function snap(){
       Math.round(p.shield),Math.round(p.shieldMax)]);
   const en=S.en.map(e=>[e.id,e.ti,Math.round(e.x),Math.round(e.y),
     Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0]);
-  const eb=S.eb.map(b=>[Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
-  const pb=S.pb.map(b=>[Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci]);
+  const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
+  const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
   const dr=S.dr.map(d2=>[Math.round(d2.x),Math.round(d2.y),Math.round(d2.hp/d2.maxhp*100)]);
   const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r)]);
@@ -40,14 +40,14 @@ function snap(){
   if(S.obj)ob=[OBJ_TYS.indexOf(S.obj.ty),Math.round(S.obj.prog),Math.round(S.obj.goal),
     Math.max(0,Math.round(S.obj.tLeft)),S.obj.done,Math.round(S.obj.zx),Math.round(S.obj.zy),S.obj.zr];
   const sx=S.sx.splice(0,10); // queued sound events ride along
-  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,ob,sx,ts:now()};
+  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,ob,sx,pvp:S.pvp?1:0,ts:now()};
 }
 function bcast(m){ for(const c of conns){try{c.send(m)}catch(e){}} }
 function sendTo(pid,m){ const c=conns.find(c=>c._pid===pid); if(c){try{c.send(m)}catch(e){}} }
 
 /* ---------------- client view ---------------- */
 function blankView(){return {players:new Map(),en:new Map(),eb:[],pb:[],it:[],dr:[],zn:[],obj:0,
-  wave:1,score:0,snapT:0,snapDt:80};}
+  wave:1,score:0,snapT:0,snapDt:80,pvp:false};}
 function applySnap(s){
   if(!V)V=blankView();
   const t=now();
@@ -55,7 +55,7 @@ function applySnap(s){
   // and make interpolation speed pulse — smooth it instead
   const raw=clamp(t-V.snapT,25,250);
   V.snapDt=V.snapT?V.snapDt*.7+raw*.3:80; V.snapT=t;
-  V.wave=s.w; V.score=s.sc;
+  V.wave=s.w; V.score=s.sc; V.pvp=!!s.pvp;
   if(s.sx)for(const k of s.sx)sfx(k);
   const seenP=new Set();
   for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,mn,en2,orbN,sabN,shd,shdMax]=a; seenP.add(id);
@@ -184,6 +184,10 @@ function hostOnData(c,d){
     if(p&&!p.dead){p.x=clamp(d.x,6,WW-6);p.y=clamp(d.y,6,WH-6);if(d.inv)p.inv=Math.max(p.inv,.1);}}
   else if(d.t==='ck'){ const p=S&&S.players.get(c._pid); if(p)resolvePick(p,d.i); }
   else if(d.t==='dw'){ const p=S&&S.players.get(c._pid); if(p)discardWeapon(p,d.i); }
+  // client self-reports a hit it saw on its own screen (bullet 'b' / enemy contact 'm') —
+  // host stays authoritative over the CONSEQUENCE (damage/i-frames/surge), the client
+  // only supplies the DETECTION, so nobody gets hit by something they didn't see land.
+  else if(d.t==='hit'){ const p=S&&S.players.get(c._pid); if(p)applyClientHit(p,d.k,d.id); }
 }
 /* GHOST FIX: WebRTC 'close' doesn't always fire — kick silent peers after 8s */
 function pruneStalePeers(){
@@ -265,6 +269,35 @@ function enterPlayClient(){
 }
 function resetNet(){ // hard-reset all multiplayer state
   if(peer){try{peer.destroy()}catch(e){}}
+  if(conns[0]&&conns[0].socket){try{conns[0].socket.close()}catch(e){}} // Battleground's raw WebSocket, if any
   peer=null; conns=[]; lobby.players=[]; clientRoster.clear();
   $('hPeers').textContent='';
+}
+
+/* ---------------- Battleground: persistent PvPvE (plain WebSocket) ----------------
+   Not PeerJS/WebRTC — this connects to a real always-on server (see server/), so
+   there's no NAT traversal to do. The wrapper below gives `conn` the same
+   {send(obj), open} shape a PeerJS DataConnection has, so every existing
+   client-side code path (clientOnData, checkLocalHits, the pick-UI 'ck'/'dw'
+   sends, main.js's input loop) works completely unchanged. */
+function startBattleground(url){
+  resetNet();
+  role='client';
+  $('hostBits').classList.add('hidden'); $('joinBits').classList.add('hidden');
+  $('lobbyDiffBits').classList.add('hidden'); $('lobbyDiffShow').textContent='';
+  $('lobbyTitle').textContent='BATTLEGROUND';
+  $('lobbySub').textContent='linking to the persistent front…';
+  setStatus('Linking…');
+  try{
+    const sock=new WebSocket(url);
+    const conn={socket:sock,open:false,
+      send:(obj)=>{ if(sock.readyState===WebSocket.OPEN){try{sock.send(JSON.stringify(obj))}catch(e){}} }};
+    conns=[conn];
+    sock.onopen=()=>{ conn.open=true; setStatus('Linked! Dropping into the Battleground…');
+      conn.send({t:'hi',name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}); };
+    sock.onmessage=(ev)=>{ let d; try{d=JSON.parse(ev.data);}catch(e){return;} clientOnData(conn,d); };
+    sock.onclose=()=>{ conn.open=false; setStatus('Link severed.'); toast('Disconnected from the Battleground');
+      if(mode==='play'){mode='title';show('scrTitle');$('hud').classList.add('hidden');} };
+    sock.onerror=()=>{ setStatus('Connection error — check the server address.'); };
+  }catch(e){ setStatus('Could not connect: '+e.message); }
 }

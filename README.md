@@ -39,6 +39,21 @@ Play solo or share a 4-letter room code with friends (co-op is peer-to-peer via 
 ### Difficulties
 `normal` is tuned for casual play; `scenario` and `infinity` raise enemy budget, HP, damage, and bullet speed (aggression), and add BIG bosses / the world Titan. All knobs per difficulty live in `data/difficulties.json`.
 
+### Battleground (persistent PvPvE)
+A fourth mode alongside solo/host/join: a 24/7 free-for-all, `infinity`-tuned,
+running on a real always-on server instead of a player's browser tab (see
+`server/`) — enemies AND other players can hurt you. Die and you respawn at a
+random spot with a clean slate (weapons back to level 1, no relics) and 10s
+of invincibility. Enter a server address (`wss://...`) on the setup screen to
+join one; see `server/README.md` to host your own.
+
+### Fair hits in multiplayer
+Each client detects when a bullet or enemy touches *its own* screen (same
+position it's rendering, not the host's slightly-ahead simulation) and
+reports that touch; the host still decides the consequence — i-frames,
+armor, shield, Phase Surge — it just never judges a hit against a position a
+player never actually saw land on their own client.
+
 ---
 
 ## Repository layout
@@ -66,6 +81,7 @@ data/
   meta.json         Sanctum permanent upgrades
   sprites.json      extra non-enemy sprites (e.g. the servitor drone)
 legacy/             the original single-file version, kept for reference
+server/             persistent Battleground server (Node + WebSockets) — see server/README.md
 ```
 
 **Content is data-driven.** The engine builds all registries from `data/*.json` at boot — adding an entry is enough for it to appear in the game. No JS changes needed unless you want a brand-new *behavior* (weapon type / enemy AI).

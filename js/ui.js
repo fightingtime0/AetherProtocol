@@ -28,6 +28,53 @@ function moveLocal(dt){
   myPos.inv=Math.max(0,myPos.inv-dt);
 }
 
+/* ---------------- client-side hit self-report ----------------
+   Fixes the "I got hit but it wasn't touching me on MY screen" feeling:
+   the host's simulation runs slightly ahead of what a remote client has
+   rendered (snapshot smoothing + network latency), so letting the host
+   alone decide "did this touch you" judges it against a position the
+   player never actually saw. Instead each client checks overlap against
+   the exact bullet/enemy positions it is currently drawing (same math as
+   render.js) and reports the touch; the host still owns whether that
+   touch actually hurts you (i-frames, armor, shield, phase surge…). */
+const reportedBullets=new Set();
+const reportedMelee=new Map(); // enemy id -> last report time (throttle only, not correctness)
+function checkLocalHits(){
+  if(role!=='client'||!V||myPos.dead)return;
+  lerpView(); // ensure e.dx/e.dy reflect *this* frame, same as what render() is about to draw
+  const r=BAL.player.hitboxRadius;
+  const bt=(now()-V.snapT)/1000;
+  const liveIds=new Set();
+  for(const b of V.eb){ // b = [id,x,y,vx,vy,ci,r]
+    liveIds.add(b[0]);
+    if(reportedBullets.has(b[0]))continue;
+    const bx=b[1]+b[3]*bt, by=b[2]+b[4]*bt, br=b[6];
+    if(Math.hypot(bx-myPos.x,by-myPos.y)<br+r){
+      reportedBullets.add(b[0]);
+      if(conns[0]&&conns[0].open)conns[0].send({t:'hit',k:'b',id:b[0]});
+    }
+  }
+  if(V.pvp)for(const b of V.pb){ // b = [id,x,y,vx,vy,ci,owner]
+    liveIds.add(b[0]);
+    if(b[6]===myId||reportedBullets.has(b[0]))continue;
+    const bx=b[1]+b[3]*bt, by=b[2]+b[4]*bt;
+    if(Math.hypot(bx-myPos.x,by-myPos.y)<3+r){
+      reportedBullets.add(b[0]);
+      if(conns[0]&&conns[0].open)conns[0].send({t:'hit',k:'p',id:b[0]});
+    }
+  }
+  for(const id of [...reportedBullets]) if(!liveIds.has(id))reportedBullets.delete(id);
+  const t=now();
+  for(const e of V.en.values()){
+    if(t-(reportedMelee.get(e.id)||0)<300)continue;
+    const T=ET[e.ti]; if(!T)continue;
+    if(Math.hypot(e.dx-myPos.x,e.dy-myPos.y)<T.r+r+1){
+      reportedMelee.set(e.id,t);
+      if(conns[0]&&conns[0].open)conns[0].send({t:'hit',k:'m',id:e.id});
+    }
+  }
+}
+
 /* ---------------- pick UI ---------------- */
 let pickDeadline=0;
 function showPickUI(views,dl,owned){
@@ -233,6 +280,12 @@ function initUI(){
   $('btnSolo').onclick=beginSolo;
   $('btnHost').onclick=()=>{saveName();show('scrLobby');startHost();};
   $('btnJoin').onclick=()=>{saveName();show('scrLobby');startJoin();};
+  $('bgUrlInput').value=save.bgUrl||'';
+  $('btnBattleground').onclick=()=>{
+    const url=$('bgUrlInput').value.trim()||save.bgUrl;
+    if(!url){toast('Enter your Battleground server address first');return;}
+    save.bgUrl=url; persist(); saveName(); show('scrLobby'); startBattleground(url);
+  };
   $('btnConnect').onclick=()=>{const c=$('codeInput').value.trim().toUpperCase();if(c.length===4)connectTo(c);};
   $('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('btnConnect').onclick();});
   $('btnCopyCode').onclick=()=>{try{navigator.clipboard.writeText(roomCode);toast('Code copied');}catch(e){}};

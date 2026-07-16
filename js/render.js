@@ -114,7 +114,7 @@ function render(){
   for(const b of eb){
     let bx,by,ci,br;
     if(isHost){bx=b.x;by=b.y;ci=b.ci;br=b.r;}
-    else{bx=b[0]+b[2]*bt;by=b[1]+b[3]*bt;ci=b[4];br=b[5];}
+    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];br=b[6];}
     if(!vis(bx,by,4))continue;
     ctx.fillStyle=EBCOLS[ci]||'#fff';
     ctx.fillRect(Math.round(bx-br),Math.round(by-br),br*2,br*2);
@@ -124,7 +124,7 @@ function render(){
   for(const b of pb){
     let bx,by,ci;
     if(isHost){bx=b.x;by=b.y;ci=b.ci;}
-    else{bx=b[0]+b[2]*bt;by=b[1]+b[3]*bt;ci=b[4];}
+    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];}
     if(!vis(bx,by,4))continue;
     ctx.fillStyle=PB_COLS[ci]||'#ffd35c';
     ctx.fillRect(Math.round(bx-1),Math.round(by-1),3,2);

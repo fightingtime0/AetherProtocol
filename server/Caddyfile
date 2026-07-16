@@ -1,0 +1,9 @@
+# Caddy terminates TLS (auto Let's Encrypt cert via HTTP-01) on your DuckDNS
+# hostname and reverse-proxies the WebSocket upgrade straight through to the
+# Node Battleground server on localhost:8080. Nothing else needs to change —
+# reverse_proxy forwards the Connection:Upgrade handshake transparently.
+#
+# Replace yourname.duckdns.org with your actual DuckDNS (or real domain) name.
+yourname.duckdns.org {
+	reverse_proxy localhost:8080
+}

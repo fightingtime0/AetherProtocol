@@ -6,8 +6,9 @@
    need zero engine changes (stats come from the JSON).
    ============================================================ */
 let eidc=1;
+let bidc=1;
 function ebul(x,y,a,sp,ci,r=1.5){ sp*=DIFF().aggression||1;
-  S.eb.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r,ci,ttl:5}); }
+  S.eb.push({id:bidc++,x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r,ci,ttl:5}); }
 
 function mkE(k){
   const T=ET[ETI[k]];

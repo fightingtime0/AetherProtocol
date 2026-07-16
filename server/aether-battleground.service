@@ -1,0 +1,20 @@
+[Unit]
+Description=AETHER//PROTOCOL — Battleground persistent server
+After=network.target
+
+[Service]
+Type=simple
+# Adjust this to wherever you deployed the repo on the VM
+WorkingDirectory=/opt/aether/AetherProtocol/server
+ExecStart=/usr/bin/node index.js
+Environment=PORT=8080
+Restart=always
+RestartSec=3
+User=aether
+# Hardening: the process only needs to read its own repo checkout and talk on the network
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
