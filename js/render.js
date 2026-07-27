@@ -140,6 +140,10 @@ function render(){
     if(telegraphing){ctx.globalAlpha=.35;ctx.fillStyle='#ff5c47';
       ctx.beginPath();ctx.arc(ex,ey,10*scl,0,TAU);ctx.fill();ctx.globalAlpha=1;}
     drawImgC(spr.c,ex,ey,(isHost?e.flash>0:e.flash)?1:0,scl);
+    if(e.shielded){ // multi-part boss core, guarded while a pylon still lives
+      ctx.globalAlpha=.55+Math.sin(now()/140)*.15; ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(ex,ey,14*scl,0,TAU);ctx.stroke(); ctx.globalAlpha=1; ctx.lineWidth=1;
+    }
     const hpp=isHost?e.hp/e.maxhp:e.hpp/100;
     if(hpp<1){const bw=(ET[ti].boss?26:ET[ti].mini?18:10)*Math.max(1,scl*.8);
       ctx.fillStyle='#060810';ctx.fillRect(Math.round(ex-bw/2),Math.round(ey-spr.h*scl/2-4),bw,2);
@@ -194,6 +198,16 @@ function render(){
       }
       ctx.lineWidth=1;
     }
+    // continuous laser beam
+    const beamOn=isHost?p.beamOnT>0:!!p.beamOn;
+    if(!p.dead&&beamOn){
+      const bx2=px+Math.cos(p.beamAng)*(p.beamLen||220), by2=py+Math.sin(p.beamAng)*(p.beamLen||220);
+      ctx.strokeStyle='rgba(255,79,216,.3)';ctx.lineWidth=4;
+      ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(bx2,by2);ctx.stroke();
+      ctx.strokeStyle='#ffe8fa';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(bx2,by2);ctx.stroke();
+      ctx.lineWidth=1;
+    }
     // shield shimmer
     const shOn=(p.shield||0)>0;
     if(!p.dead&&shOn){ctx.globalAlpha=.25;ctx.strokeStyle='#4ef0e8';
@@ -241,11 +255,9 @@ function updateHUD(){
   if(role!=='client'&&S){me=S.players.get(myId);wave=S.wave;score=S.score;shards=me?me.shards:0;}
   else if(V){me=V.players.get(myId);wave=V.wave;score=V.score;shards=me?me.shards:0;}
   if(me){$('hpbar').style.width=Math.max(0,me.hp/me.maxhp*100)+'%';
-    const mp=role!=='client'?me.mana/me.manaMax*100:(me.mana||0);
-    const en2=role!=='client'?me.energy/me.energyMax*100:(me.energy||0);
-    $('mpbar').style.width=clamp(mp,0,100)+'%';
-    $('enbar').style.width=clamp(en2,0,100)+'%';
-    $('enbar').classList.toggle('lock',!!me.eLock);
+    const tp=role!=='client'?me.t/me.tMax*100:(me.t||0);
+    $('tbar').style.width=clamp(tp,0,100)+'%';
+    $('tbar').classList.toggle('lock',!!me.tLock);
     // shield bar only shows if you have any shield capacity
     const shMax=me.shieldMax||0;
     $('shwrap').style.display=shMax>0?'block':'none';
@@ -255,9 +267,11 @@ function updateHUD(){
   // boss healthbar
   let bnm='',bhp=0,hasBoss=false;
   if(role!=='client'&&S){
-    for(const e of S.en) if(e.boss&&e.hp>0){hasBoss=true;bnm=ET[ETI[e.k]].bn||'BOSS';bhp=e.hp/e.maxhp;break;}
+    for(const e of S.en) if(e.boss&&e.hp>0){hasBoss=true;
+      bnm=(ET[ETI[e.k]].bn||'BOSS')+(e.shielded?' ⛨ SHIELDED':'');bhp=e.hp/e.maxhp;break;}
   }else if(V){
-    for(const e of V.en.values()) if(ET[e.ti]&&ET[e.ti].boss){hasBoss=true;bnm=ET[e.ti].bn||'BOSS';bhp=(e.hpp||0)/100;break;}
+    for(const e of V.en.values()) if(ET[e.ti]&&ET[e.ti].boss){hasBoss=true;
+      bnm=(ET[e.ti].bn||'BOSS')+(e.shielded?' ⛨ SHIELDED':'');bhp=(e.hpp||0)/100;break;}
   }
   $('bossWrap').classList.toggle('hidden',!hasBoss);
   if(hasBoss){$('bossName').textContent=bnm;$('bossBar').style.width=Math.max(0,bhp*100)+'%';}

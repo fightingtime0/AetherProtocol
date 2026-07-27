@@ -206,6 +206,29 @@ function enemyAct(e,dt){
        else if(phase===1){ e.cd=1.0; for(let i=0;i<22;i++)ebul(e.x,e.y,i/22*TAU+e.ph,44,0); }
        else{ e.cd=.35; for(let i=-1;i<=1;i++)ebul(e.x,e.y,aim+i*.3,92,2); } }
      break;
+   case 'pylon': // multi-part boss part: orbits its linked core, shields it while alive
+     { const core=S.en.find(c=>c.id===e.core);
+       if(core&&core.hp>0){
+         e.ph=(e.ph||0)+dt*BAL.combat.pylon.orbitSpeed;
+         const orbR=BAL.combat.pylon.orbitR, ang=e.ph+(e.orbIdx||0)*Math.PI;
+         const tx=core.x+Math.cos(ang)*orbR, ty=core.y+Math.sin(ang)*orbR;
+         const ddx=tx-e.x, ddy=ty-e.y, dd=Math.hypot(ddx,ddy)||1;
+         e.x+=ddx/dd*Math.min(dd*6,e.spd)*dt; e.y+=ddy/dd*Math.min(dd*6,e.spd)*dt;
+       } else mv(dx/d,dy/d,.6); // core already destroyed — fall back to a normal chaser
+       if(e.cd<=0){e.cd=1.3; ebul(e.x,e.y,aim,64,2);} }
+     break;
+   case 'dreadnought': // multi-part boss core: near-immune while any pylon lives (see damageE)
+     e.ph+=dt;
+     if(e.shielded){
+       if(d>140)mv(dx/d,dy/d,.5);
+       if(e.cd<=0){e.cd=1.6; for(let i=0;i<10;i++)ebul(e.x,e.y,i/10*TAU+e.ph,40,3);}
+     }else{
+       if(d>160)mv(dx/d,dy/d,.9);
+       if(e.cd<=0){ const phase=Math.floor(e.ph/3)%2;
+         if(phase===0){e.cd=.12; ebul(e.x,e.y,e.ph*2.4,60,2,2); ebul(e.x,e.y,-e.ph*2.4+Math.PI,60,4,2);}
+         else{e.cd=.5; for(let i=-3;i<=3;i++)ebul(e.x,e.y,aim+i*.16,86,0);} }
+     }
+     break;
    case 'titan':
      e.ph+=dt; e.tpT-=dt;
      if(d>110) mv(dx/d,dy/d);

@@ -1,19 +1,19 @@
 [
   {
-    "id": "arc", "glyph": "☄", "name": "Arcanist", "cost": 0,
-    "theme": "Fantasy · glass-cannon mage",
+    "id": "arc", "glyph": "☄", "name": "Voltcaster", "cost": 0,
+    "theme": "Sci-fi · overclocked glass-cannon",
     "weapon": "bolt",
     "stats": { "dmgM": 1.25, "maxhp": -20 }
   },
   {
-    "id": "tem", "glyph": "✚", "name": "Templar", "cost": 0,
-    "theme": "Fantasy · holy bulwark",
+    "id": "tem", "glyph": "✚", "name": "Aegis Trooper", "cost": 0,
+    "theme": "Sci-fi · shielded bulwark",
     "weapon": "orbit",
     "stats": { "maxhp": 40, "regen": 1, "spd": 0.90, "armor": 1 }
   },
   {
-    "id": "hex", "glyph": "✸", "name": "Hexblade", "cost": 0,
-    "theme": "Fantasy · cursed duelist",
+    "id": "hex", "glyph": "✸", "name": "Nanoblade", "cost": 0,
+    "theme": "Sci-fi · corrosive duelist",
     "weapon": "venom",
     "stats": { "crit": 0.15, "greed": 1.15 }
   },
@@ -27,17 +27,17 @@
     "id": "tec", "glyph": "⚡", "name": "Technomancer", "cost": 0,
     "theme": "Sci-fi · overclocked artificer",
     "weapon": "rail",
-    "stats": { "cdM": 0.85, "bspdM": 1.15, "energyMax": 20, "shieldMax": 15, "maxhp": -10 }
+    "stats": { "cdM": 0.85, "bspdM": 1.15, "tMax": 20, "shieldMax": 15, "maxhp": -10 }
   },
   {
-    "id": "bld", "glyph": "⚔", "name": "Blademaster", "cost": 500,
-    "theme": "Unlock · relentless duelist",
+    "id": "bld", "glyph": "⚔", "name": "Plasma Duelist", "cost": 500,
+    "theme": "Unlock · relentless plasma duelist",
     "weapon": "saber",
     "stats": { "dmgM": 1.15, "spd": 1.15, "crit": 0.10, "maxhp": -15 }
   },
   {
-    "id": "nec", "glyph": "☠", "name": "Necromancer", "cost": 650,
-    "theme": "Unlock · master of servitors",
+    "id": "nec", "glyph": "☠", "name": "Swarm Engineer", "cost": 650,
+    "theme": "Unlock · master of servitor drones",
     "weapon": "seeker",
     "stats": { "droneHpM": 1.6, "greed": 1.2 }
   },
@@ -45,12 +45,12 @@
     "id": "art", "glyph": "⦿", "name": "Artillerist", "cost": 800,
     "theme": "Unlock · walking siege engine",
     "weapon": "bomb",
-    "stats": { "dmgM": 1.2, "maxhp": 25, "energyMax": 30, "armor": 1, "spd": 0.90 }
+    "stats": { "dmgM": 1.2, "maxhp": 25, "tMax": 30, "armor": 1, "spd": 0.90 }
   },
   {
-    "id": "chr", "glyph": "✹", "name": "Chronomancer", "cost": 1000,
-    "theme": "Unlock · bends time itself",
+    "id": "chr", "glyph": "✹", "name": "Singularity Engineer", "cost": 1000,
+    "theme": "Unlock · bends spacetime itself",
     "weapon": "sigil",
-    "stats": { "cdM": 0.85, "manaRegen": 1.4, "dashCd": 0.75 }
+    "stats": { "cdM": 0.85, "tRchM": 1.4, "dashCd": 0.75 }
   }
 ]

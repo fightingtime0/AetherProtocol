@@ -166,6 +166,23 @@
     }
   },
   {
+    "id": "pylon", "ai": "pylon", "partOf": true,
+    "hp": 220, "spd": 90, "r": 4, "score": 60, "shards": 8,
+    "sprite": {
+      "pal": { "1": "#39415f", "2": "#ff9d3c", "3": "#8f9ac2", "4": "#ffd35c" },
+      "rows": [".2222.", "211112", "213312", "211112", ".2442.", "..44.."]
+    }
+  },
+  {
+    "id": "dreadnought", "ai": "dreadnought", "boss": true, "bossName": "RIFT DREADNOUGHT", "inRotation": true,
+    "parts": ["pylon", "pylon"],
+    "hp": 1400, "spd": 8, "r": 7, "score": 550, "shards": 45,
+    "sprite": {
+      "pal": { "1": "#1a2440", "2": "#8f9ac2", "3": "#ff9d3c", "4": "#4ef0e8", "5": "#0b0e1a" },
+      "rows": ["2.....11.....2", ".2...1441...2.", "..2.144441.2..", "1112144441211.", "13332444423331", "1112144441211.", "..2.144441.2..", ".2...1441...2.", "2.....11.....2", "....5.5.5.5...."]
+    }
+  },
+  {
     "id": "titan", "ai": "titan", "boss": true, "bossName": "WORLD TITAN", "scale": 3,
     "hp": 3200, "spd": 11, "r": 16, "score": 2000, "shards": 160,
     "sprite": {

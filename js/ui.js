@@ -197,7 +197,7 @@ $('dashbtn').addEventListener('click',()=>{if(mode==='play')tryDash();});
 function show(id){['scrTitle','scrSetup','scrShop','scrBoard','scrPick','scrDeath','scrEditor','scrLobby'].forEach(s=>$(s).classList.add('hidden'));
   if(id)$(id).classList.remove('hidden');}
 function saveName(){const n=$('nameInput').value.trim().toUpperCase().slice(0,12);
-  save.name=n||'MAGE-'+irnd(10,99);persist();return save.name;}
+  save.name=n||'PILOT-'+irnd(10,99);persist();return save.name;}
 function refreshTitle(){ $('tBest').textContent=save.best||'—'; $('tShards').textContent=save.shards; }
 
 function beginSolo(){

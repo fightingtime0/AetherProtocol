@@ -11,22 +11,35 @@ function mkPlayer(id,name,sprite,cls){
   const p={id,name,sprite,img:spriteToCanvas(sprite),
     x:WW/2+rnd(-30,30),y:WH/2+rnd(-30,30),r:PB.hitboxRadius,
     hp:PB.hp,maxhp:PB.hp,inv:0,dead:false,shards:0,pickUntil:0,pickInvUntil:0,pickOpts:null,cls:c.id,
-    mana:PB.mana,manaMax:PB.mana,energy:PB.energy,energyMax:PB.energy,eLock:false,
+    t:PB.t.start,tMax:PB.t.start,tLock:false,
+    tGenerator:false,tOverclock:false,tLeak:0,tKillRefund:0,tFreeChance:0,tMoveRegen:0,
+    beamOnT:0,beamAng:0,beamLen:0,
     armor:0,shield:0,shieldMax:0,shieldCd:0,
     surgeT:0,dmgBoost:1,auraR:0,orbN:0,sabN:0,orbA:rnd(0,TAU),sabA:rnd(0,TAU),
     st:{spd:PB.speed,dmgM:1,cdM:1,crit:0,regen:0,greed:1,dashCd:PB.dashCooldown,bspdM:1,
-        mag:PB.pickupRadius,manaRegen:PB.manaRegen,eRegen:PB.energyRecharge,
-        auraRegen:0,auraDmg:0,tithe:0,droneHpM:1},
+        mag:PB.pickupRadius,tRchM:1,
+        auraRegen:0,auraDmg:0,tithe:0,droneHpM:1,dmgTakenM:1},
     weapons:[{id:c.wpn,lvl:1,rar:'c',cd:0}]};
   return p;
 }
+/* custom relic effects that can't be expressed as a plain additive/multiplicative
+   stat — hooked from data.js's ps.f() via passives.json's "special" field, and
+   read every tick from hostUpdate()'s T-charge section / damageE(). */
+const SPECIAL_PASSIVES={
+  fluxGenerator:p=>{ p.tGenerator=true; p.tLock=false; },
+  overclockCell:p=>{ p.tMax=Math.max(6,Math.round(p.tMax*0.5)); p.t=Math.min(p.t,p.tMax);
+    p.tOverclock=true; p.tLeak+=2; },
+  ventCapacitor:p=>{ p.tKillRefund+=2; },
+  ghostRounds:p=>{ p.tFreeChance=Math.min(.6,p.tFreeChance+.15); },
+  kineticBattery:p=>{ p.tMoveRegen+=10; },
+};
 function applyMetaObj(p,m){
   m=m||{};
   p.metaObj=m; // stashed so a persistent-mode respawn can rebuild this player from scratch
   for(const def of META) applyStats(p,def.stats,m[def.id]||0); // Sanctum ranks
   applyStats(p,CLS(p.cls).stats);                              // class after meta
   p.maxhp=Math.max(BAL.player.minMaxHp,p.maxhp);
-  p.hp=p.maxhp; p.mana=p.manaMax; p.energy=p.energyMax; p.shield=p.shieldMax;
+  p.hp=p.maxhp; p.t=p.tMax; p.shield=p.shieldMax;
 }
 // Battleground (persistent PvPvE) respawn: brand-new player object built the same
 // way a fresh join is (0 upgrades, base stats), not the old one patched in place —
@@ -96,6 +109,14 @@ function nextWave(){
       toastAll('⚠ A BIG BOSS descends!');
     }
     S.spawnQ.push(b); sfxE('boss');
+    const partsSpec=ET[ETI[bk]].parts; // multi-part boss: spawn its linked parts alongside it
+    if(partsSpec)partsSpec.forEach((pid,idx)=>{
+      const pt=mkE(pid); pt.core=b.id; pt.orbIdx=idx; pt.x=b.x; pt.y=b.y; pt.ph=idx*Math.PI;
+      // scale like a boss (not a generic mob) so parts stay proportional to their
+      // core at every wave instead of out-scaling it via the steeper mob curve
+      pt.hp=pt.maxhp=ET[ETI[pid]].hp*(1+w*WV.bossHpPerWave)*(0.6+np*0.4)*D.enemyHp;
+      S.spawnQ.push(pt);
+    });
     const mn=BOSS_MINION[bk];
     if(mn) for(let i=0;i<2+np;i++) S.spawnQ.push(mkE(mn)); // boss escort
     for(let i=0;i<Math.min(6,Math.floor(w/WV.bossEvery)*2+np);i++) S.spawnQ.push(mkE('imp'));
@@ -130,6 +151,18 @@ function nextWave(){
 const OBJ_TYS=['slay','notouch','zone','speed','greed'];
 function objLabel(ty){return {slay:'Slay the horde',notouch:'Take no damage',zone:'Hold the circle',
   speed:'Clear the wave fast',greed:'Harvest shards'}[ty];}
+// one-line goal + fail condition, shown once when the objective rolls — the ongoing
+// HUD banner (objHudText, net.js) stays compact and just tracks live progress
+function objIntro(o){
+  const t=Math.ceil(o.tLeft);
+  return {
+    slay:`◎ SLAY THE HORDE — kill ${o.goal} enemies within ${t}s. Fails if the timer runs out first.`,
+    notouch:`◎ STAY UNSCATHED — take zero hits for ${t}s straight. Fails the instant you're hit.`,
+    zone:`◎ HOLD THE CIRCLE — stand inside the marked ring for ${o.goal}s total (${t}s to do it). Fails if time runs out first.`,
+    speed:`◎ SPEED CLEAR — finish this wave within ${o.goal}s. Fails if the wave runs long.`,
+    greed:`◎ HARVEST — collect ${o.goal} shards within ${t}s. Fails if the timer runs out first.`,
+  }[o.ty];
+}
 function rollObjective(w){
   const OB=BAL.objectives;
   S.obj=null;
@@ -145,7 +178,7 @@ function rollObjective(w){
   else if(ty==='speed'){o.goal=OB.speed.clearSeconds;o.tLeft=OB.speed.clearSeconds;}
   else{o.goal=OB.greed.goalBase+OB.greed.goalPerWave*w;o.tLeft=OB.greed.time;}
   S.obj=o;
-  toastAll('◎ OBJECTIVE: '+objLabel(ty));
+  toastAll(objIntro(o));
 }
 function objDone(v){
   const o=S.obj; if(!o||o.done)return;
@@ -158,7 +191,7 @@ function objDone(v){
 /* ---------------- damage ---------------- */
 function hurt(p,amt){
   if(p.inv>0||p.dead||now()<p.pickInvUntil)return;
-  amt=Math.round(amt*(DIFF().enemyDamage||1));   // difficulty scaling
+  amt=Math.round(amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1));   // difficulty + glass-cannon scaling
   amt=Math.max(1,amt-(p.armor||0));              // armor: flat reduction per hit
   p.shieldCd=BAL.player.shield.regenDelay;       // any hit delays shield regen
   p.inv=.9; if(p.id===myId)S.shake=.28;
@@ -205,10 +238,13 @@ function applyClientHit(p,kind,id){
 }
 function toastAll(m){ toast(m); bcast({t:'ts',m}); }
 function damageE(e,dmg,owner,quiet){
+  if(e.shielded)dmg*=BAL.combat.shieldedDmgFrac; // multi-part boss: core barely scratched while any part still lives
   e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit');}
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
     S.score+=e.sc; sfxE(e.boss?'bosskill':'kill');
     const p=S.players.get(owner);
+    if(p&&e.core!==undefined) toastAll(p.name+' downed a pylon!'); // multi-part boss part died
+    if(p&&p.tKillRefund>0) p.t=Math.min(p.tMax,p.t+p.tKillRefund);
     const sh=Math.round(e.sh*(p?p.st.greed:1)*DIFF().shardMult);
     if(p&&sh>0){
       // drop a collectible shard orb instead of an instant credit — anyone can walk over it
@@ -330,10 +366,26 @@ function hostUpdate(dt){
     p.auraR=aR;
     p.dmgBoost=(1+aD)*(p.surgeT>0?PB.surge.mult:1);
     if(!p.dead)p.hp=Math.min(p.maxhp,p.hp+(p.st.regen+aR)*dt);
-    // mana trickles always; energy only recharges once fully drained
-    p.mana=Math.min(p.manaMax,p.mana+p.st.manaRegen*dt);
-    if(p.eLock){ p.energy+=p.st.eRegen*dt;
-      if(p.energy>=p.energyMax){p.energy=p.energyMax;p.eLock=false;} }
+    // T-charge: default behavior is "reload after empty" — fire freely while
+    // charge remains, then once it hits 0 it locks and recharges to full.
+    // Flux Generator swaps that for constant trickle regen (see SPECIAL_PASSIVES).
+    // Overclocked Cell (also there) keeps the lock but adds a fast recharge
+    // multiplier + a passive leak that drains charge even while idle.
+    if(p.tLeak>0) p.t=Math.max(0,p.t-p.tLeak*dt);
+    if(p.tGenerator){
+      p.t=Math.min(p.tMax,p.t+PB.t.genRate*p.st.tRchM*dt); p.tLock=false;
+    }else if(p.tLock){
+      const rchMult=p.tOverclock?4:1;
+      p.t+=PB.t.rechargeRate*rchMult*p.st.tRchM*dt;
+      if(p.t>=p.tMax){p.t=p.tMax;p.tLock=false;}
+    }
+    p.beamOnT=Math.max(0,(p.beamOnT||0)-dt);
+    // Kinetic Battery: charge builds while you're moving, bleeds while you camp
+    if(p.tMoveRegen>0){
+      const moved=Math.hypot(p.x-(p.prevX??p.x),p.y-(p.prevY??p.y));
+      p.t=moved>0.15?Math.min(p.tMax,p.t+p.tMoveRegen*dt):Math.max(0,p.t-p.tMoveRegen*.4*dt);
+    }
+    p.prevX=p.x; p.prevY=p.y;
     // shield: regenerates after not being hit for a while
     if(p.shieldMax>0){
       p.shieldCd=Math.max(0,p.shieldCd-dt);
@@ -364,8 +416,7 @@ function hostUpdate(dt){
       if(def.passiveOrbit||def.passiveSaber)continue;
       w.cd-=dt;
       if(w.cd<=0){
-        if(def.rt==='spell'&&p.mana<def.cost)continue;       // waiting on mana
-        if(def.rt==='tech'&&(p.eLock||p.energy<=0))continue; // recharging
+        if(def.rt==='t'&&(p.tLock||p.t<=0))continue; // charge empty & recharging
         if(def.drone&&S.dr.filter(d2=>d2.owner===p.id).length>=CB.drones.maxPerPlayer)continue;
         let tg=null;
         if(def.needT){let bd=1e9;
@@ -373,13 +424,14 @@ function hostUpdate(dt){
             if(d<bd&&d<320*320){bd=d;tg=e;}}
           if(!tg)continue;}
         w.cd=def.cd(w)*p.st.cdM;
-        if(def.rt==='spell')p.mana-=def.cost;
-        else if(def.rt==='tech'){p.energy-=def.cost;
-          if(p.energy<=0){p.energy=0;p.eLock=true;}}
+        if(def.rt==='t'&&!(p.tFreeChance>0&&Math.random()<p.tFreeChance)){
+          p.t-=def.cost;
+          if(p.t<=0){p.t=0;p.tLock=true;}
+        }
         const od=p.st.dmgM; p.st.dmgM=od*p.dmgBoost;
         def.fire(p,w,tg);
         p.st.dmgM=od;
-        sfxE(def.rt==='tech'?'shootT':'shoot');
+        sfxE(def.rt==='t'?'shootT':'shoot');
       }
     }
     p.orbA=(p.orbA||0)+dt*CB.orbit.spinSpeed;
@@ -434,6 +486,11 @@ function hostUpdate(dt){
     if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:'#b34fff'});
   }
   S.zn=S.zn.filter(z=>z.ttl>0);
+  // multi-part bosses: core is shielded (near-immune, see damageE) while any linked part survives
+  for(const e of S.en){ if(e.hp<=0||!ET[ETI[e.k]].parts)continue;
+    const nowShielded=S.en.some(pt=>pt.core===e.id&&pt.hp>0);
+    if(e.shielded&&!nowShielded)toastAll('⚠ '+(ET[ETI[e.k]].bn||'BOSS')+' CORE EXPOSED — pylons down!');
+    e.shielded=nowShielded; }
   // enemies
   for(const e of S.en){ enemyAct(e,dt); e.flash=Math.max(0,e.flash-dt);
     if(e.poisT>0){ e.poisT-=dt; damageE(e,e.poisD*dt,e.poisBy,true);
@@ -456,7 +513,21 @@ function hostUpdate(dt){
         let da=ta-ca; while(da>Math.PI)da-=TAU; while(da<-Math.PI)da+=TAU;
         const na=ca+clamp(da,-4.2*dt,4.2*dt),sp=Math.hypot(b.vx,b.vy)*1.01;
         b.vx=Math.cos(na)*Math.min(sp,190);b.vy=Math.sin(na)*Math.min(sp,190);}}
-    b.x+=b.vx*dt;b.y+=b.vy*dt;b.ttl-=dt;
+    if(b.wob){ // weird-trajectory weapon: sine-weaves along its base heading
+      b.wobT+=dt;
+      const fx=b.wx0+Math.cos(b.baseAng)*b.wspd*b.wobT, fy=b.wy0+Math.sin(b.baseAng)*b.wspd*b.wobT;
+      const px2=Math.cos(b.baseAng+Math.PI/2), py2=Math.sin(b.baseAng+Math.PI/2);
+      const off=Math.sin(b.wobT*b.wfreq)*b.wamp;
+      b.x=fx+px2*off; b.y=fy+py2*off;
+    }else if(b.rang){ // boomerang weapon: flies out, then curves back to its owner
+      b.rt=(b.rt||0)+dt;
+      if(!b.returning){ b.x+=b.vx*dt; b.y+=b.vy*dt; if(b.rt>=b.outT)b.returning=true; }
+      else{ const owner=S.players.get(b.owner); const tx=owner?owner.x:b.x, ty=owner?owner.y:b.y;
+        const ddx=tx-b.x, ddy=ty-b.y, dd=Math.hypot(ddx,ddy)||1;
+        b.x+=ddx/dd*b.rspd*dt; b.y+=ddy/dd*b.rspd*dt;
+        if(dd<8)b.dead=true; }
+    }else{ b.x+=b.vx*dt; b.y+=b.vy*dt; }
+    b.ttl-=dt;
     for(const e of S.en){if(b.dead)break;
       if(e.hp>0&&Math.hypot(e.x-b.x,e.y-b.y)<e.r+b.r+1){
         damageE(e,b.dmg,b.owner);

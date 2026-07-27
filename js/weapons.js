@@ -25,7 +25,7 @@ function droneStats(def,lvl,rar,p){
            dmg:scaleVal(def.dmg,lvl)*dm*(p?p.st.dmgM:1) };
 }
 
-const NEEDS_TARGET={aimed:1,lance:1,lob:1,chain:1,smite:1,zone:1,scatter:1};
+const NEEDS_TARGET={aimed:1,lance:1,lob:1,chain:1,smite:1,zone:1,scatter:1,beam:1,wave:1,boomerang:1};
 const BEHAVIORS={
   aimed(def,p,w,tg){
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), n=cnt(def.count,w.lvl);
@@ -88,6 +88,34 @@ const BEHAVIORS={
     const st2=droneStats(def,w.lvl,w.rar,p);
     S.dr.push({x:p.x+rnd(-6,6),y:p.y+rnd(-6,6),hp:st2.hp,maxhp:st2.hp,
       dmg:st2.dmg,owner:p.id,hitCd:0,r:3});
+  },
+  beam(def,p,w,tg){ // continuous laser: hitscan tick that pierces everyone in the line
+    const a=Math.atan2(tg.y-p.y,tg.x-p.x), range=def.range||220, dmg=wDmg(def,w,p);
+    const dx=Math.cos(a), dy=Math.sin(a), width=def.width||3;
+    for(const e of S.en){ if(e.hp<=0)continue;
+      const ex=e.x-p.x, ey=e.y-p.y, proj=ex*dx+ey*dy;
+      if(proj<0||proj>range+e.r)continue;
+      const perp=Math.abs(ex*dy-ey*dx);
+      if(perp<width+e.r) damageE(e,dmg,p.id,true); }
+    p.beamOnT=0.12; p.beamAng=a; p.beamLen=range;
+    if(Math.random()<.6)S.fx.push({x:p.x+dx*rnd(10,range*.9),y:p.y+dy*rnd(10,range*.9),
+      vx:rnd(-8,8),vy:rnd(-8,8),l:.12,ci:'#ff4fd8'});
+  },
+  wave(def,p,w,tg){ // weird-trajectory shot: sine-weaves toward its target heading
+    const a=Math.atan2(tg.y-p.y,tg.x-p.x), dmg=wDmg(def,w,p), n=cnt(def.count,w.lvl);
+    for(let i=0;i<n;i++){
+      const baseAng=a+(i-(n-1)/2)*(def.spreadStep||0), sp=def.speed*p.st.bspdM;
+      pbul({x:p.x,y:p.y,vx:Math.cos(baseAng)*sp,vy:Math.sin(baseAng)*sp,
+        dmg,ci:def.ci||3,r:def.r||1.5,owner:p.id,pierce:cnt(def.pierce,w.lvl),
+        wob:1,baseAng,wx0:p.x,wy0:p.y,wspd:sp,wobT:0,
+        wfreq:def.wobFreq||6,wamp:def.wobAmp||14});
+    }
+  },
+  boomerang(def,p,w,tg){ // thrown blade: flies out, then curves back to whoever threw it
+    const a=Math.atan2(tg.y-p.y,tg.x-p.x), dmg=wDmg(def,w,p), sp=def.speed*p.st.bspdM;
+    pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,dmg,ci:def.ci||4,
+      r:def.r||2,owner:p.id,pierce:cnt(def.pierce,w.lvl)||20,ttl:def.ttl||3.2,
+      rang:1,outT:def.outT||0.5,rspd:sp*1.15,rt:0,returning:false});
   },
 };
 function attachBehavior(def){

@@ -38,12 +38,12 @@ function cdVal(spec,lvl){ if(!spec)return 1;
    'mult' stats stack multiplicatively (value ^ ranks)
    P_LEVEL stats live on the player object, the rest on p.st.     */
 const STAT_KIND={
-  maxhp:'add', armor:'add', shieldMax:'add', manaMax:'add', energyMax:'add',
+  maxhp:'add', armor:'add', shieldMax:'add', tMax:'add',
   crit:'add', regen:'add', mag:'add', auraRegen:'add', auraDmg:'add', tithe:'add',
   dmgM:'mult', cdM:'mult', spd:'mult', greed:'mult', dashCd:'mult', bspdM:'mult',
-  manaRegen:'mult', eRegen:'mult', droneHpM:'mult'
+  tRchM:'mult', droneHpM:'mult', dmgTakenM:'mult'
 };
-const P_LEVEL=new Set(['maxhp','armor','shieldMax','manaMax','energyMax']);
+const P_LEVEL=new Set(['maxhp','armor','shieldMax','tMax']);
 function applyStats(p,stats,ranks=1){
   if(!stats||ranks<=0)return;
   for(const k in stats){
@@ -60,8 +60,7 @@ const STAT_LABEL={
   maxhp:    v=>sign(v)+Math.abs(v)+' max HP',
   armor:    v=>sign(v)+Math.abs(v)+' armor',
   shieldMax:v=>sign(v)+Math.abs(v)+' shield',
-  manaMax:  v=>sign(v)+Math.abs(v)+' max mana',
-  energyMax:v=>sign(v)+Math.abs(v)+' max energy',
+  tMax:     v=>sign(v)+Math.abs(v)+' max T-charge',
   mag:      v=>sign(v)+Math.abs(v)+'px pickup radius',
   regen:    v=>sign(v)+Math.abs(v)+' HP/s regen',
   crit:     v=>pct(v)+' crit chance',
@@ -72,9 +71,9 @@ const STAT_LABEL={
   spd:      v=>pctM(v)+' move speed',
   greed:    v=>pctM(v)+' shard yield',
   bspdM:    v=>pctM(v)+' projectile speed',
-  manaRegen:v=>pctM(v)+' mana regen',
-  eRegen:   v=>pctM(v)+' energy recharge',
+  tRchM:    v=>pctM(v)+' T-charge recharge rate',
   droneHpM: v=>pctM(v)+' servitor HP',
+  dmgTakenM:v=>pctM(v)+' damage taken',
   cdM:      v=>pctM(1/v)+' fire rate',
   dashCd:   v=>'−'+Math.round((1-v)*100)+'% dash cooldown',
 };
@@ -148,13 +147,16 @@ async function loadData(){
   CLASSES=classes;
   for(const c of CLASSES){ c.g=c.glyph; c.n=c.name; c.wpn=c.weapon; }
 
-  /* passives: desc auto-generated from stats */
+  /* passives: desc auto-generated from stats, or given verbatim for "special"
+     entries whose behavior can't be expressed as a plain stat (see SPECIAL_PASSIVES
+     in sim.js) — those set "desc" directly in passives.json instead of "stats". */
   PASSIVES=passives;
   for(const ps of PASSIVES){
     ps.g=ps.glyph; ps.n=ps.name;
-    ps.d=(ps.mp?'CO-OP · ':'')+genStatDesc(ps.stats)+(ps.heal?(', heal '+ps.heal):'');
+    ps.d=(ps.mp?'CO-OP · ':'')+(ps.desc||(genStatDesc(ps.stats)+(ps.heal?(', heal '+ps.heal):'')));
     ps.f=p=>{ applyStats(p,ps.stats);
-      if(ps.heal)p.hp=Math.min(p.maxhp,p.hp+ps.heal); };
+      if(ps.heal)p.hp=Math.min(p.maxhp,p.hp+ps.heal);
+      if(ps.special&&SPECIAL_PASSIVES[ps.special])SPECIAL_PASSIVES[ps.special](p); };
   }
 
   /* meta shop: desc auto-generated from stats */

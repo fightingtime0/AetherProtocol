@@ -24,13 +24,14 @@ const PEER_OPTS={
 function snap(){
   const pl=[]; for(const p of S.players.values())
     pl.push([p.id,Math.round(p.x),Math.round(p.y),Math.round(p.hp),p.maxhp,
-      (p.inv>0?1:0)|(p.dead?2:0)|(now()<p.pickUntil?4:0)|(p.eLock?8:0),
+      (p.inv>0?1:0)|(p.dead?2:0)|(now()<p.pickUntil?4:0)|(p.tLock?8:0)|(p.beamOnT>0?16:0),
       Math.round(p.st.spd),Math.round(p.st.dashCd*100),p.shards,
-      Math.round(p.mana/p.manaMax*100),Math.round(p.energy/p.energyMax*100),
+      Math.round(p.t/p.tMax*100),
       p.orbN||0,p.sabN||0,
-      Math.round(p.shield),Math.round(p.shieldMax)]);
+      Math.round(p.shield),Math.round(p.shieldMax),
+      Math.round((p.beamAng||0)*100),Math.round(p.beamLen||0)]);
   const en=S.en.map(e=>[e.id,e.ti,Math.round(e.x),Math.round(e.y),
-    Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0]);
+    Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0]);
   const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
   const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
@@ -58,25 +59,26 @@ function applySnap(s){
   V.wave=s.w; V.score=s.sc; V.pvp=!!s.pvp;
   if(s.sx)for(const k of s.sx)sfx(k);
   const seenP=new Set();
-  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,mn,en2,orbN,sabN,shd,shdMax]=a; seenP.add(id);
+  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen]=a; seenP.add(id);
     let p=V.players.get(id);
     if(!p){p={id,dx:x,dy:y};V.players.set(id,p);}
     p.px=p.dx;p.py=p.dy;
     // big jump = respawn/teleport — snap instead of gliding across the map
     if(Math.hypot(x-p.px,y-p.py)>90){p.px=x;p.py=y;}
     p.tx=x;p.ty=y;p.st=t;
-    p.hp=hp;p.maxhp=mhp;p.inv=fl&1;p.dead=fl&2;p.picking=fl&4;p.eLock=!!(fl&8);p.shards=sh;
-    p.mana=mn;p.energy=en2;p.orbN=orbN||0;p.sabN=sabN||0;
+    p.hp=hp;p.maxhp=mhp;p.inv=fl&1;p.dead=fl&2;p.picking=fl&4;p.tLock=!!(fl&8);p.beamOn=!!(fl&16);p.shards=sh;
+    p.t=tp;p.orbN=orbN||0;p.sabN=sabN||0;
     p.shield=shd||0;p.shieldMax=shdMax||0;
+    p.beamAng=(bAng||0)/100;p.beamLen=bLen||0;
     if(id===myId){myPos.spd=spd;myPos.dcd=dcd/100;myPos.dead=!!p.dead;}}
   for(const id of [...V.players.keys()]) if(!seenP.has(id))V.players.delete(id);
   const seenE=new Set();
-  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl]=a; seenE.add(id);
+  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd]=a; seenE.add(id);
     let e=V.en.get(id);
     if(!e){e={id,ti,dx:x,dy:y};V.en.set(id,e);}
     e.px=e.dx;e.py=e.dy;
     if(Math.hypot(x-e.px,y-e.py)>60){e.px=x;e.py=y;} // warlock/reaper/titan blinks
-    e.tx=x;e.ty=y;e.st=t;e.hpp=hpp;e.flash=fl;e.tel=tel;e.scl=scl||1;}
+    e.tx=x;e.ty=y;e.st=t;e.hpp=hpp;e.flash=fl;e.tel=tel;e.scl=scl||1;e.shielded=!!shd;}
   for(const id of [...V.en.keys()]) if(!seenE.has(id))V.en.delete(id);
   V.eb=s.eb; V.pb=s.pb; V.it=s.it; V.dr=s.dr||[]; V.zn=s.zn||[]; V.obj=s.ob||0;
 }

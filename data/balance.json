@@ -7,10 +7,7 @@
     "dashDuration": 0.22,
     "dashInvuln": 0.28,
     "dashSpeedMult": 3.1,
-    "mana": 100,
-    "manaRegen": 4.5,
-    "energy": 100,
-    "energyRecharge": 30,
+    "t": { "start": 36, "rechargeRate": 34, "genRate": 7 },
     "pickupRadius": 7,
     "minMaxHp": 40,
     "reviveHpFrac": 0.6,
@@ -25,7 +22,9 @@
                 "contactTick": 3, "clawDamage": 4, "clawCooldown": 0.5, "bulletDamage": 8 },
     "contactDamage": { "boss": 24, "meleeDash": 16, "mini": 18, "base": 11 },
     "enemyBulletDamage": 10,
-    "critMult": 2
+    "critMult": 2,
+    "shieldedDmgFrac": 0.08,
+    "pylon": { "orbitR": 34, "orbitSpeed": 0.9 }
   },
   "waves": {
     "budgetBase": 4,

@@ -17,8 +17,7 @@
   <div>
     <div id="hpwrap"><div id="hpbar"></div></div>
     <div class="rwrap" id="shwrap"><div id="shbar"></div></div>
-    <div class="rwrap"><div id="mpbar"></div></div>
-    <div class="rwrap"><div id="enbar"></div></div>
+    <div class="rwrap"><div id="tbar"></div></div>
     <div class="hudtxt" style="margin-top:5px">WAVE <span id="hWave" class="cyanc">1</span></div>
     <div id="wpnbar"></div>
   </div>
@@ -41,10 +40,10 @@
 <!-- TITLE -->
 <div id="scrTitle" class="overlay">
   <h1>AETHER<span class="fx">//</span>PROTOCOL</h1>
-  <div class="sub">a spell-circuit bullet hell</div>
+  <div class="sub">a reactor-core bullet hell</div>
   <div style="margin:4px 0 10px">
     <div class="statline">CALLSIGN</div>
-    <input type="text" id="nameInput" maxlength="12" placeholder="MAGE-01">
+    <input type="text" id="nameInput" maxlength="12" placeholder="PILOT-01">
   </div>
   <div class="row"><button class="pxbtn prime" id="btnStart" style="font-size:15px;padding:14px 36px">▶ START</button></div>
   <div class="row">
@@ -54,7 +53,7 @@
   </div>
   <div class="statline" style="margin-top:10px">Best wave: <b id="tBest">—</b> · Shards banked: <b id="tShards">0</b></div>
   <div class="keys"><span><kbd>WASD</kbd> move</span><span><kbd>SPACE</kbd> dash</span><span><kbd>M</kbd> mute</span><span>weapons auto-fire</span></div>
-  <div class="note">Dodge everything. Spells drink <span class="cyanc">mana</span> (always regenerating), tech burns <span style="color:#7cff6b">energy</span> (recharges only after it runs dry). Dash through bolts for a damage surge. Die, spend <span class="mag2">◆ shards</span> on permanent power &amp; new classes.</div>
+  <div class="note">Dodge everything. Most weapons drink <span class="cyanc">T-charge</span> — a small reactor cell that locks and fast-recharges the moment it hits empty. Melee &amp; orbit weapons are free. Dash through bolts for a damage surge. Die, spend <span class="mag2">◆ shards</span> on permanent power &amp; new classes.</div>
 </div>
 
 <!-- PLAY SETUP -->
@@ -111,7 +110,7 @@
 <!-- CHARACTER EDITOR -->
 <div id="scrEditor" class="overlay hidden">
   <h1 style="font-size:20px">CHARACTER FORGE</h1>
-  <div class="sub">paint your mage · pick your class · red circle = your hitbox</div>
+  <div class="sub">paint your operative · pick your class · red circle = your hitbox</div>
   <div class="statline">CLASS · banked <span class="mag2">◆ <span id="edShards">0</span></span></div>
   <div class="row" id="classRow" style="max-width:480px"></div>
   <div id="classDesc"></div>

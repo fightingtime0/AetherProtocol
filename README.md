@@ -13,7 +13,7 @@ Play solo or share a 4-letter room code with friends (co-op is peer-to-peer via 
 2. **Survive waves.** Enemies spawn on a budget that grows each wave. Weapons auto-fire; your job is movement, dodging, and resource pacing.
 3. **Clear a wave → Attune.** Time freezes and each living player picks 1 of 3 cards: a new weapon, a weapon upgrade, or a relic (passive). Weapon slots grow to 2 at wave 5 and 3 at wave 10.
 4. **Every 5th wave is a boss** (with its own healthbar). Bosses rotate through a pool; some bosses send **unique minions** ahead of them in the two preceding waves.
-5. **Random side objectives** (some waves): slay quotas, no-damage, hold-the-circle, speed clears, shard harvests — completing one pays every player bonus shards.
+5. **Random side objectives** (some waves): slay quotas, no-damage, hold-the-circle, speed clears, shard harvests — completing one pays every player bonus shards. The toast when one rolls always states the exact goal number, the time limit, and the fail condition in one line (see `objIntro()` in `sim.js`); the HUD banner then tracks live progress.
 6. **Die.** Your shards bank permanently. Spend them in the **Sanctum** (permanent stat ranks) or the **Character Forge** (unlock new classes). Descend again, deeper.
 
 ## Mechanics
@@ -22,8 +22,7 @@ Play solo or share a 4-letter room code with friends (co-op is peer-to-peer via 
 - **Health (red/gold bar)** — the run ends when everyone is down. Downed allies revive at the next wave.
 - **Shield (blue bar)** — sits *on top of* health and absorbs damage first. Only regenerates after you avoid damage for a few seconds (`balance.json → player.shield`). Granted by classes, relics, and Sanctum ranks — base kit has none.
 - **Armor** — flat damage reduction applied to every hit before shields (each hit always deals at least 1). From classes, the Rune Plating relic, and Iron Plating Sanctum ranks.
-- **Mana (cyan bar)** — powers **spell** weapons. Regenerates slowly but *constantly*. If a spell can't afford its cost it simply waits.
-- **Energy (green bar)** — powers **tech** weapons. Does **not** regenerate normally: once it fully depletes, it locks and recharges to full (bar shows hatched while locked). Tech gameplay is burst → downtime.
+- **T-charge (cyan bar)** — powers every non-melee weapon from a single reactor cell. Low capacity by default and does **not** regenerate while you still have some left: once it fully depletes, it locks and fast-recharges to full (bar shows hatched while locked). Burst → brief downtime → burst. Relics branch this three ways: **Capacitor Bank** (flat +max), **Flux Generator** (drops the hard lock for constant slow trickle regen instead), and **Redline Cell** (−50% max, 4× faster recharge once tripped, but leaks charge even while idle).
 - **Melee/orbit weapons** (sabers, fangs) cost nothing.
 
 ### Skill expression
@@ -92,10 +91,13 @@ server/             persistent Battleground server (Node + WebSockets) — see s
 
 ### Weapons (`data/weapons.json`)
 Add an object with a unique `id` and a `type` from:
-`aimed`, `radial`, `lance`, `scatter`, `lob`, `chain`, `smite`, `zone`, `drone`, `orbit`, `saber`.
+`aimed`, `radial`, `lance`, `scatter`, `lob`, `chain`, `smite`, `zone`, `drone`, `orbit`, `saber`,
+`beam` (continuous laser — ticks fast, drains T-charge per tick, hits everything along the line),
+`wave` (sine-weaves toward its target, snaking through a cluster), `boomerang` (flies out, then
+curves back to whoever threw it, hitting on both legs).
 It automatically joins the Attune pick pool and chest drops.
 
-- `resource`: `"spell"` (mana), `"tech"` (energy), or `"none"`; `cost` = per shot.
+- `resource`: `"t"` (T-charge — every non-melee weapon shares the one pool) or `"none"`; `cost` = per shot (per *tick* for `beam`).
 - Scaling specs (level 1 always equals `base`):
   - value `{base, flat, perLvl}` → `(base + flat·(lvl−1)) · (1 + perLvl·(lvl−1))`
   - count `{base, per}` → `base + floor(per·(lvl−1))`
@@ -108,22 +110,25 @@ A class is: `id`, `glyph`, `name`, `cost` (0 = unlocked from the start; >0 = sha
 
 | additive | multiplicative |
 |---|---|
-| `maxhp`, `armor`, `shieldMax`, `manaMax`, `energyMax`, `crit`, `regen`, `mag` (pickup px), `auraRegen`, `auraDmg`, `tithe` | `dmgM`, `cdM` (lower = faster), `spd`, `greed`, `dashCd` (lower = shorter), `bspdM`, `manaRegen`, `eRegen`, `droneHpM` |
+| `maxhp`, `armor`, `shieldMax`, `tMax`, `crit`, `regen`, `mag` (pickup px), `auraRegen`, `auraDmg`, `tithe` | `dmgM`, `cdM` (lower = faster), `spd`, `greed`, `dashCd` (lower = shorter), `bspdM`, `tRchM` (T-charge recharge rate), `droneHpM`, `dmgTakenM` |
+
+Relics that can't be expressed as a plain stat (Flux Generator, Redline Cell, Vent Capacitor, Ghost Rounds, Kinetic Battery) use a `"special"` id instead of `"stats"` in `passives.json`, resolved through `SPECIAL_PASSIVES` in `sim.js`.
 
 The same keys work in `passives.json` (per pick) and `meta.json` (per Sanctum rank; multiplicative stats compound per rank).
 
 ### Enemies & bosses (`data/enemies.json`)
 Each entry has stats, an inline pixel `sprite` (`pal` + `rows`), and an `ai` key implemented in `js/enemies.js`
-(`imp, skull, turret, wisp, slash, charge, brute, warlock, obelisk, sporeling, wraith, weldbot, herald, colossus, seraph, hive, reaper, forge, serpent, monarch, titan`). Reuse any `ai` for a new enemy — new stats + sprite, zero code.
+(`imp, skull, turret, wisp, slash, charge, brute, warlock, obelisk, sporeling, wraith, weldbot, herald, colossus, seraph, hive, reaper, forge, serpent, monarch, pylon, dreadnought, titan`). Reuse any `ai` for a new enemy — new stats + sprite, zero code.
 
 - `pool: {minWave, weight, cost}` → joins normal wave spawns automatically.
 - `mini: true` → becomes a "guardian" that can ambush long waves.
 - `interlude: true` → spawns periodically as an optional bonus target (obelisk-style).
 - `boss: true` + `bossName` → gets the big healthbar; add `inRotation: true` to join the every-5-waves rotation (order in the file = fight order); add `minion: "<enemy id>"` and that minion escorts the boss **and infiltrates the two waves before it**.
 - `unique: true` marks boss-bound minions (excluded from generic pools).
+- **Multi-part bosses**: give a boss entry `"parts": ["<enemy id>", ...]` (repeat an id for multiple copies, e.g. two `pylon`s). Each listed part spawns alongside the boss, tagged with `core` = the boss's runtime id. While *any* part is still alive the core takes only `combat.shieldedDmgFrac` of incoming damage (see `damageE()` in `sim.js`) and the HUD boss bar shows `⛨ SHIELDED`; killing the last part flips a one-time "CORE EXPOSED" toast. Parts mark themselves `"partOf": true` (documentation only — they're excluded from generic spawn pools simply by having no `pool` spec) and get their own `ai` in `enemies.js`. See `dreadnought`/`pylon` for the reference implementation: the pylons orbit the core (`balance.json → combat.pylon`) and must be shot down before the core itself takes real damage.
 
 ### Balance (`data/balance.json`)
-One file, every knob: base HP/speed, **mana regen** (`player.manaRegen`), energy recharge, shield delay/rate, dash & Phase Surge, drone/orbit/saber combat shapes, wave budget math, objective goals & rewards, meta price growth. Change a number, refresh, done.
+One file, every knob: base HP/speed, **T-charge** (`player.t.start/rechargeRate/genRate`), shield delay/rate, dash & Phase Surge, drone/orbit/saber/pylon combat shapes, wave budget math, objective goals & rewards, meta price growth. Change a number, refresh, done.
 
 ---
 

@@ -70,7 +70,7 @@ input[type=text]:focus{border-color:var(--gold);outline:none}
 #toasts{position:fixed;bottom:110px;left:0;right:0;display:flex;flex-direction:column;align-items:center;
   gap:4px;z-index:6;pointer-events:none}
 .toast{background:rgba(10,13,24,.9);border:1px solid var(--edge);padding:5px 12px;font-size:11px;
-  letter-spacing:.08em;animation:tfade 3s forwards}
+  letter-spacing:.08em;animation:tfade 3s forwards;max-width:88vw;white-space:normal;text-align:center}
 @keyframes tfade{0%{opacity:0;transform:translateY(8px)}10%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
 #pickBanner{position:fixed;top:64px;left:0;right:0;text-align:center;z-index:6;pointer-events:none;
   font-size:12px;letter-spacing:.12em;color:var(--gold);text-shadow:1px 1px 0 #000}
@@ -104,9 +104,8 @@ kbd{background:#10152a;border:1px solid var(--edge);padding:2px 7px;border-radiu
 .rwrap{width:150px;height:7px;background:#060810;border:2px solid var(--edge);margin-top:3px}
 #shwrap{height:6px;display:none}
 #shbar{height:100%;background:linear-gradient(90deg,#3b7bd6,#bfe6ff);width:100%;transition:width .12s}
-#mpbar{height:100%;background:linear-gradient(90deg,#2f6bff,var(--cyan));width:100%;transition:width .12s}
-#enbar{height:100%;background:linear-gradient(90deg,#2f9e44,#7cff6b);width:100%;transition:width .12s}
-#enbar.lock{background:repeating-linear-gradient(45deg,#4a5a2a,#4a5a2a 4px,#26301c 4px,#26301c 8px)}
+#tbar{height:100%;background:linear-gradient(90deg,#2f6bff,var(--cyan));width:100%;transition:width .12s}
+#tbar.lock{background:repeating-linear-gradient(45deg,#2a4a52,#2a4a52 4px,#152830 4px,#152830 8px)}
 /* boss bar */
 #bossWrap{position:fixed;top:8px;left:50%;transform:translateX(-50%);width:min(420px,64vw);z-index:5;pointer-events:none;text-align:center}
 #bossName{font-size:11px;letter-spacing:.22em;color:var(--magenta);text-shadow:1px 1px 0 #000;margin-bottom:3px;font-weight:bold}
