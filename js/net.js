@@ -16,9 +16,64 @@ const PEER_OPTS={
     {urls:'stun:stun1.l.google.com:19302'},
     {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
     {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turns:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
+    {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
   ]}
 };
+
+/* ---- link watchdog -------------------------------------------------
+   A TURN-relayed handshake is much slower than a direct one, so a lobby
+   that is still negotiating looks identical to one that has hung. Two
+   staged timers give feedback and, eventually, a way out:
+     3s  → say we're falling back to the relay
+     15s → give up with a real error + a retry button
+   Both timers re-check "is it open?" before firing and are cleared the
+   moment a link opens, so a peer that connected and merely went quiet is
+   never failed here — silence on an OPEN link is pruneStalePeers' job. */
+const LINK_SOFT_MS=3000, LINK_HARD_MS=15000;
+let linkSoftT=0, linkHardT=0;
+function clearLinkWatch(){
+  if(linkSoftT)clearTimeout(linkSoftT);
+  if(linkHardT)clearTimeout(linkHardT);
+  linkSoftT=linkHardT=0;
+  const b=$('btnNetRetry'); if(b){b.classList.add('hidden'); b.onclick=null;}
+}
+function offerRetry(onRetry){
+  const b=$('btnNetRetry');
+  if(b){ b.classList.remove('hidden'); b.onclick=()=>{ clearLinkWatch(); onRetry(); }; }
+}
+function startLinkWatch(isOpen,failMsg,onRetry){
+  clearLinkWatch(); // never stack watches from an earlier attempt
+  linkSoftT=setTimeout(()=>{ linkSoftT=0; if(!isOpen())setStatus('Establishing relay…'); },LINK_SOFT_MS);
+  linkHardT=setTimeout(()=>{
+    linkHardT=0;
+    if(isOpen())return; // connected in the meantime — nothing to fail
+    setStatus(failMsg);
+    offerRetry(onRetry);
+  },LINK_HARD_MS);
+}
+/* Which ICE path actually won: host = same LAN, srflx = direct through
+   STUN, relay = routed via TURN (slower, but the only thing that works
+   behind symmetric NAT). Logged once per link, for debugging only. */
+function logIcePath(c,label){
+  const pc=c&&c.peerConnection;
+  if(!pc||!pc.getStats)return;
+  pc.getStats().then(st=>{
+    const cand=new Map(); let sel=null,ok=null;
+    st.forEach(r=>{
+      if(r.type==='local-candidate'||r.type==='remote-candidate')cand.set(r.id,r);
+      else if(r.type==='candidate-pair'){
+        if(r.selected||r.nominated&&r.state==='succeeded')sel=r;
+        else if(r.state==='succeeded')ok=ok||r;
+      }
+    });
+    const pair=sel||ok;
+    if(!pair){console.log('[net] '+label+': no selected ICE pair reported');return;}
+    const lt=(cand.get(pair.localCandidateId)||{}).candidateType||'?';
+    const rt=(cand.get(pair.remoteCandidateId)||{}).candidateType||'?';
+    console.log('[net] '+label+' ICE pair: local='+lt+' remote='+rt+
+      ' → '+(lt==='relay'||rt==='relay'?'TURN RELAY':'DIRECT'));
+  }).catch(()=>{});
+}
 
 /* ---------------- snapshots ---------------- */
 function snap(){
@@ -142,19 +197,33 @@ function startHost(){
 function openHostPeer(){
   try{
     peer=new Peer('aeproto-'+roomCode,PEER_OPTS);
-    peer.on('open',()=>{setStatus('Circuit open. Waiting for allies…');$('btnMpStart').classList.remove('hidden');});
+    const myPeer=peer; // a retry/id-roll replaces peer — late events from myPeer are stale
+    startLinkWatch(()=>!!(peer&&peer.open),
+      'Could not open the circuit — the signaling server may be blocked on this network.',
+      ()=>{ setStatus('Opening circuit…'); try{peer.destroy()}catch(e){} openHostPeer(); });
+    peer.on('open',()=>{ if(peer!==myPeer)return;
+      clearLinkWatch();setStatus('Circuit open. Waiting for allies…');$('btnMpStart').classList.remove('hidden');});
     peer.on('disconnected',()=>{ // lost the signaling broker — relink so new allies can still find us
+      if(peer!==myPeer)return;
       setStatus('Signal lost — relinking…');
       try{peer.reconnect()}catch(e){} });
     peer.on('error',e=>{
+      if(peer!==myPeer)return;
       if(e.type==='unavailable-id'){ // zombie session owns this code: roll a fresh one
         roomCode=mkCode(); $('roomCode').textContent=roomCode;
         try{peer.destroy()}catch(e2){}
         openHostPeer(); return;
       }
+      // a real error is more informative than the generic timeout text —
+      // stop the watch so it can't overwrite this, but keep a way back
+      clearLinkWatch();
       setStatus('Peer error: '+e.type+(e.type==='network'?' — check your connection':''));
+      offerRetry(()=>{ setStatus('Opening circuit…'); try{peer.destroy()}catch(e2){} openHostPeer(); });
     });
     peer.on('connection',c=>{
+      if(peer!==myPeer){try{c.close()}catch(e){} return;} // ally reached a peer we've already replaced
+      if(c.open)logIcePath(c,'ally link');
+      else c.on('open',()=>logIcePath(c,'ally link'));
       c.on('data',d=>hostOnData(c,d));
       c.on('close',()=>{ conns=conns.filter(x=>x!==c);
         lobby.players=lobby.players.filter(p=>p.id!==c._pid);
@@ -220,23 +289,37 @@ function connectTo(code){
   setStatus('Linking…');
   try{
     peer=new Peer(PEER_OPTS);
+    // one watch covers the whole join: broker handshake AND data channel.
+    // dc stays null until peer.on('open') hands us the connection.
+    // p!==peer means a retry replaced this peer — ignore its late events.
+    const p=peer; let dc=null;
+    startLinkWatch(()=>!!(dc&&dc.open),
+      'Link timed out — the relay could not be reached. Retry, or try another network/hotspot for one of you.',
+      ()=>connectTo(code));
     peer.on('error',e=>{
+      if(peer!==p)return;
+      clearLinkWatch(); // show the specific cause, not the generic timeout
       if(e.type==='peer-unavailable')setStatus('No room "'+code+'" found — check the code (host must be in the lobby).');
-      else setStatus('Error: '+e.type+(e.type==='network'?' — check your connection':''));
+      else{ setStatus('Error: '+e.type+(e.type==='network'?' — check your connection':''));
+        offerRetry(()=>connectTo(code)); }
     });
-    peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
+    peer.on('disconnected',()=>{ if(peer!==p)return; try{peer.reconnect()}catch(e){} });
     peer.on('open',()=>{
+      if(peer!==p)return;
       const c=peer.connect('aeproto-'+code,{reliable:true});
-      conns=[c];
-      // room code resolved but no data channel = NAT punch-through failing
-      const watchdog=setTimeout(()=>{ if(!c.open)
-        setStatus('Found the room but the link won\'t open — strict NAT? Try another network/hotspot for one of you.'); },9000);
-      c.on('open',()=>{ clearTimeout(watchdog); setStatus('Linked! Waiting for host to start…');
+      dc=c; conns=[c];
+      c.on('open',()=>{ clearLinkWatch(); logIcePath(c,'host link');
+        setStatus('Linked! Waiting for host to start…');
         c.send({t:'hi',name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}); });
       c.on('data',d=>clientOnData(c,d));
-      c.on('close',()=>{ clearTimeout(watchdog); setStatus('Link severed.'); toast('Disconnected from host');
+      // conns[0]!==c means a retry already replaced this connection — a
+      // late event from the discarded one must not clear the new watch
+      c.on('close',()=>{ if(conns[0]!==c)return;
+        clearLinkWatch(); setStatus('Link severed.'); toast('Disconnected from host');
         if(mode==='play'){mode='title';show('scrTitle');$('hud').classList.add('hidden');} });
-      c.on('error',()=>{ clearTimeout(watchdog); setStatus('Link error — try again.'); });
+      c.on('error',()=>{ if(conns[0]!==c)return;
+        clearLinkWatch(); setStatus('Link error — try again.');
+        offerRetry(()=>connectTo(code)); });
     });
   }catch(e){ setStatus('PeerJS unavailable here — deploy to Vercel/GitHub Pages for co-op.'); }
 }
@@ -270,6 +353,7 @@ function enterPlayClient(){
   show(null); $('hud').classList.remove('hidden');
 }
 function resetNet(){ // hard-reset all multiplayer state
+  clearLinkWatch(); // no timer may outlive the peer it was watching
   if(peer){try{peer.destroy()}catch(e){}}
   if(conns[0]&&conns[0].socket){try{conns[0].socket.close()}catch(e){}} // Battleground's raw WebSocket, if any
   peer=null; conns=[]; lobby.players=[]; clientRoster.clear();
