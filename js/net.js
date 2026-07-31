@@ -5,20 +5,74 @@
    applySnap() — they encode/decode the same positional arrays.
    ============================================================ */
 
-/* ---- WebRTC config: several STUN servers + a free TURN relay.
-   Without TURN, two players behind strict NATs (different networks,
-   mobile data) resolve the room code but the data link never opens —
-   the most common "multiplayer doesn't start" failure. ---- */
+/* ---- WebRTC ICE config -------------------------------------------
+   STUN alone is enough for two players on the same network, or behind
+   friendly NATs. It is NOT enough for symmetric/strict NAT (most mobile
+   data, many campus/office networks): the NAT picks a fresh port per
+   destination, so the address STUN discovers is useless and the data
+   channel never opens. Those pairings need a TURN relay.
+
+   Do NOT swap these for the "openrelayproject" servers found in most
+   WebRTC tutorials — openrelay.metered.ca and staticauth.openrelay.
+   metered.ca are DEAD (verified silent on every port). That dead config
+   was the original cause of cross-network players hanging at "linking".
+   If TURN ever needs replacing, every free provider now requires an
+   account, and credentials must be verified with tools/turn-test.html
+   before shipping — a bad TURN config fails silently on the same-network
+   testing path and only breaks for players you can't reproduce. ---- */
+/* ExpressTurn free account (expressturn.com). Static long-term
+   credentials — verified with an authenticated Allocate, which returned
+   a real relay address, so these are known-good and do not expire.
+   Both must be non-empty or TURN stays off and checkRelay() warns.
+   These ship in client JS and are readable by anyone with devtools:
+   that is inherent to a backend-free static site, but it means the
+   free bandwidth quota is attached to a key strangers can copy. If
+   that becomes a problem, move to coturn on the Battleground host. */
+const TURN_USER='000000002100877371';
+const TURN_PASS='GqXOhEMuBbpCpqjK3O4KqZKHEYo=';
+const TURN_HOST='free.expressturn.com:3478';
+const TURN_SERVERS=(TURN_USER&&TURN_PASS)?[
+  {urls:'turn:'+TURN_HOST,username:TURN_USER,credential:TURN_PASS},               // UDP — fastest
+  {urls:'turn:'+TURN_HOST+'?transport=tcp',username:TURN_USER,credential:TURN_PASS} // TCP — survives UDP-blocking firewalls
+]:[];
 const PEER_OPTS={
   debug:1,
   config:{iceServers:[
     {urls:'stun:stun.l.google.com:19302'},
     {urls:'stun:stun1.l.google.com:19302'},
-    {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
+    ...TURN_SERVERS
   ]}
 };
+
+/* Does a TURN relay actually answer? Gathers with iceTransportPolicy
+   'relay', which suppresses every non-relay candidate — so one relay
+   candidate proves TURN works, and none proves it doesn't. Result feeds
+   the timeout message, turning "it just hangs" into a named cause. */
+let relayOK=null; // null = untested, true/false = result of last check
+function checkRelay(){
+  if(typeof RTCPeerConnection==='undefined')return;
+  if(!TURN_SERVERS.length){ relayOK=false;
+    console.warn('[net] No TURN servers configured — players on different '+
+      'networks will NOT be able to connect. See TURN_SERVERS in js/net.js.');
+    return; }
+  let pc;
+  try{ pc=new RTCPeerConnection({iceServers:PEER_OPTS.config.iceServers,iceTransportPolicy:'relay'}); }
+  catch(e){ relayOK=false; return; }
+  let done=false;
+  const finish=(ok)=>{ if(done)return; done=true; relayOK=ok;
+    try{pc.close()}catch(e){}
+    console.log('[net] TURN relay check: '+(ok?'OK — relay candidate obtained'
+      :'FAILED — no relay candidate; cross-network play will not work')); };
+  pc.onicecandidate=e=>{
+    if(e.candidate){ if(/ typ relay/.test(e.candidate.candidate))finish(true); }
+    else finish(false); // gathering ended with no relay candidate
+  };
+  pc.onicecandidateerror=e=>{ if(e.errorCode>=300)console.warn('[net] ICE server error '+e.errorCode+' from '+e.url+': '+e.errorText); };
+  try{ pc.createDataChannel('probe');
+    pc.createOffer().then(o=>pc.setLocalDescription(o)).catch(()=>finish(false)); }
+  catch(e){ finish(false); }
+  setTimeout(()=>finish(false),6000);
+}
 
 /* ---- link watchdog -------------------------------------------------
    A TURN-relayed handshake is much slower than a direct one, so a lobby
@@ -47,7 +101,7 @@ function startLinkWatch(isOpen,failMsg,onRetry){
   linkHardT=setTimeout(()=>{
     linkHardT=0;
     if(isOpen())return; // connected in the meantime — nothing to fail
-    setStatus(failMsg);
+    setStatus(typeof failMsg==='function'?failMsg():failMsg); // lazy: relay check may have finished since
     offerRetry(onRetry);
   },LINK_HARD_MS);
 }
@@ -181,6 +235,7 @@ function updatePeerList(){
 }
 function startHost(){
   resetNet(); // kill any stale peer left over from a previous host/join
+  checkRelay(); // runs alongside the handshake; only reports, never blocks
   role='host'; roomCode=mkCode();
   $('hostBits').classList.remove('hidden'); $('joinBits').classList.add('hidden');
   $('roomCode').textContent=roomCode;
@@ -276,6 +331,7 @@ function pruneStalePeers(){
 }
 function bcastRoster(){ bcast({t:'ros',players:lobby.players.map(p=>({id:p.id,name:p.name,sprite:p.sprite})),diff:DIFF().name}); }
 function startJoin(){
+  checkRelay(); // so the join timeout can name the cause instead of guessing
   role='client';
   $('hostBits').classList.add('hidden'); $('joinBits').classList.remove('hidden');
   $('lobbyDiffBits').classList.add('hidden'); $('lobbyDiffShow').textContent='';
@@ -294,7 +350,9 @@ function connectTo(code){
     // p!==peer means a retry replaced this peer — ignore its late events.
     const p=peer; let dc=null;
     startLinkWatch(()=>!!(dc&&dc.open),
-      'Link timed out — the relay could not be reached. Retry, or try another network/hotspot for one of you.',
+      ()=>relayOK===false
+        ? 'Link timed out — no TURN relay is available, so players on different networks cannot connect. Same-network play still works. (Set TURN_SERVERS in js/net.js.)'
+        : 'Link timed out — the relay could not be reached. Retry, or try another network/hotspot for one of you.',
       ()=>connectTo(code));
     peer.on('error',e=>{
       if(peer!==p)return;
