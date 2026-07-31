@@ -7,24 +7,85 @@
     "dashDuration": 0.22,
     "dashInvuln": 0.28,
     "dashSpeedMult": 3.1,
-    "t": { "start": 36, "rechargeRate": 34, "genRate": 7, "min": 6, "maxLockSec": 12 },
+    "t": {
+      "start": 36,
+      "rechargeRate": 34,
+      "genRate": 7,
+      "min": 6,
+      "maxLockSec": 12
+    },
     "pickupRadius": 7,
     "minMaxHp": 40,
     "reviveHpFrac": 0.6,
-    "shield": { "regenDelay": 4, "regenRate": 12 },
-    "surge": { "mult": 1.25, "duration": 2.5 },
+    "shield": {
+      "regenDelay": 4,
+      "regenRate": 12
+    },
+    "surge": {
+      "mult": 1.25,
+      "duration": 2.5
+    },
     "auraRadius": 75
   },
   "combat": {
-    "orbit":  { "radius": 18, "arc": 0.5,  "tickMult": 3.5, "spinSpeed": 3.4 },
-    "saber":  { "reach": 24,  "arc": 0.45, "tickMult": 3.2, "spinSpeed": 7, "deflectArc": 0.38, "deflectMin": 6 },
-    "drones": { "maxPerPlayer": 2, "speed": 85, "returnSpeed": 70, "leashDist": 24,
-                "contactTick": 3, "clawDamage": 4, "clawCooldown": 0.5, "bulletDamage": 8 },
-    "contactDamage": { "boss": 24, "meleeDash": 16, "mini": 18, "base": 11 },
+    "trail": {
+      "minSpeed": 90,
+      "scale": 0.055,
+      "maxLen": 9
+    },
+    "smite": {
+      "markTime": 0.9,
+      "startRadius": 46,
+      "ringWidth": 1
+    },
+    "chainArc": {
+      "life": 0.22,
+      "boltSpeed": 320
+    },
+    "orbit": {
+      "radius": 40,
+      "spinSpeed": 2.2,
+      "life": 6.0,
+      "boom": 14,
+      "boomDmgFrac": 0.85
+    },
+    "saber": {
+      "reach": 26,
+      "arc": 0.5,
+      "spinSpeed": 7,
+      "deflectArc": 0.38,
+      "deflectMin": 6,
+      "tickInterval": 0.55,
+      "energyPerHit": 2.5,
+      "deflectBonus": 3.5,
+      "maxDeflectBonus": 28
+    },
+    "drones": {
+      "maxPerPlayer": 2,
+      "speed": 85,
+      "returnSpeed": 70,
+      "leashDist": 24,
+      "contactTick": 3,
+      "clawDamage": 4,
+      "clawCooldown": 0.5,
+      "bulletDamage": 8,
+      "maxRange": 170,
+      "stuckDrag": 0.0,
+      "hp": 1
+    },
+    "contactDamage": {
+      "boss": 24,
+      "meleeDash": 16,
+      "mini": 18,
+      "base": 11
+    },
     "enemyBulletDamage": 10,
     "critMult": 2,
     "shieldedDmgFrac": 0.08,
-    "pylon": { "orbitR": 34, "orbitSpeed": 0.9 }
+    "pylon": {
+      "orbitR": 34,
+      "orbitSpeed": 0.9
+    }
   },
   "waves": {
     "budgetBase": 4,
@@ -36,7 +97,10 @@
     "guardianAfterSec": 40,
     "guardianMinWave": 3,
     "pickSeconds": 30,
-    "slotWaves": [5, 10],
+    "slotWaves": [
+      5,
+      10
+    ],
     "spawnTrickleSec": 0.45,
     "enemyHpPerWave": 0.15,
     "miniHpPerWave": 0.06,
@@ -47,11 +111,27 @@
     "minWave": 2,
     "rewardBase": 12,
     "rewardPerWave": 3,
-    "slay":    { "goalBase": 8, "goalPerWave": 2, "time": 30 },
-    "notouch": { "time": 18 },
-    "zone":    { "holdSeconds": 10, "time": 40, "radius": 34 },
-    "speed":   { "clearSeconds": 40 },
-    "greed":   { "goalBase": 25, "goalPerWave": 7, "time": 50 }
+    "slay": {
+      "goalBase": 8,
+      "goalPerWave": 2,
+      "time": 30
+    },
+    "notouch": {
+      "time": 18
+    },
+    "zone": {
+      "holdSeconds": 10,
+      "time": 40,
+      "radius": 34
+    },
+    "speed": {
+      "clearSeconds": 40
+    },
+    "greed": {
+      "goalBase": 25,
+      "goalPerWave": 7,
+      "time": 50
+    }
   },
   "economy": {
     "metaCostGrowth": 1.85,

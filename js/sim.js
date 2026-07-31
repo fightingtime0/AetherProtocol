@@ -61,7 +61,7 @@ function respawnPersistent(p){
 function newSim(playersInfo,opts){
   obstacles=genWorld();
   eidc=1; bidc=1;
-  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],obj:null,sx:[],
+  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],obj:null,sx:[],
      wave:0,score:0,t:0,waveT:0,
      spawnQ:[],spawnT:0,waveDone:false,miniSpawned:false,over:false,shake:0,
      // Battleground mode only: pvp = player bullets can hurt other players;
@@ -310,7 +310,9 @@ function damageE(e,dmg,owner,quiet){
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
     S.score+=e.sc; sfxE(e.boss?'bosskill':'kill');
     const p=S.players.get(owner);
-    if(S.moba&&p)grantXp(p,mobaXpForEntity(e)); // siege upgrades are earned by killing
+    if(S.moba&&p){ const xp=mobaXpForEntity(e);
+      grantXp(p,xp);                 // siege upgrades are earned by killing
+      grantAssistXp(p,xp,null); }    // ...and allies share a cut
     if(p&&e.core!==undefined) toastAll(p.name+' downed a pylon!'); // multi-part boss part died
     if(p&&p.tKillRefund>0) p.t=Math.min(p.tMax,p.t+p.tKillRefund);
     const sh=Math.round(e.sh*(p?p.st.greed:1)*DIFF().shardMult);
@@ -500,15 +502,16 @@ function hostUpdate(dt){
   }
   // weapons fire (all players)
   for(const p of S.players.values()){
+    // orbN used to drive the passive blade ring; fangs are real projectiles
+    // now, so only the saber still needs a rendered blade count
     p.orbN=0;p.sabN=0;
     for(const w of p.weapons){
-      if(WPN[w.id].passiveOrbit)p.orbN+=orbCount(w);
       if(WPN[w.id].passiveSaber)p.sabN+=sabCountW(w);
     }
     if(p.dead||now()<p.pickUntil)continue;
     for(const w of p.weapons){
       const def=WPN[w.id];
-      if(def.passiveOrbit||def.passiveSaber)continue;
+      if(def.passiveSaber)continue;
       w.cd-=dt;
       if(w.cd<=0){
         if(def.rt==='t'&&(p.tLock||p.t<=0))continue; // charge empty & recharging
@@ -535,46 +538,43 @@ function hostUpdate(dt){
         const od=p.st.dmgM; p.st.dmgM=od*p.dmgBoost;
         def.fire(p,w,tg);
         p.st.dmgM=od;
-        sfxE(def.rt==='t'?'shootT':'shoot');
+        sfxE(def.sfx||(def.rt==='t'?'shootT':'shoot')); // per-weapon voice
       }
     }
-    p.orbA=(p.orbA||0)+dt*CB.orbit.spinSpeed;
     p.sabA=(p.sabA||0)+dt*CB.saber.spinSpeed;
-    // orbit blades — sector sweep, no inner dead zone
-    for(const w of p.weapons){ if(!WPN[w.id].passiveOrbit)continue;
-      const n=orbCount(w);
-      for(const e of S.en){ if(e.hp<=0)continue;
-        const dd=Math.hypot(e.x-p.x,e.y-p.y);
-        if(dd>CB.orbit.radius+6+e.r)continue;
-        const ea=Math.atan2(e.y-p.y,e.x-p.x);
-        for(let i=0;i<n;i++){ let da=ea-(p.orbA+i/n*TAU);
-          da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.orbit.arc){ damageE(e,orbDmg(p,w)*dt*CB.orbit.tickMult*p.dmgBoost,p.id); break; } } }
-      for(const q of foePlayers(p)){ // same sweep, against hostile players
-        const dd=Math.hypot(q.x-p.x,q.y-p.y);
-        if(dd>CB.orbit.radius+6+q.r)continue;
-        const ea=Math.atan2(q.y-p.y,q.x-p.x);
-        for(let i=0;i<n;i++){ let da=ea-(p.orbA+i/n*TAU);
-          da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.orbit.arc){ hurt(q,orbDmg(p,w)*dt*CB.orbit.tickMult*p.dmgBoost,p.id,true); break; } } } }
-    // saber sweep
+    /* AETHER SABER — discrete strikes, not a continuous grind.
+       Every tickInterval the blades land one real hit on each target in
+       their arc, each hit costing charge. Bolts the blades deflect feed
+       p.sabCharge, which is added to (and consumed by) the next strike,
+       up to a cap — so parrying a barrage sets up a big swing. */
+    p.sabTick=Math.max(0,(p.sabTick||0)-dt);
     for(const w of p.weapons){ if(!WPN[w.id].passiveSaber)continue;
+      if(p.sabTick>0)break;
       const n=sabCountW(w);
-      const dmg=wDmg(WPN[w.id],w,p)*p.dmgBoost;
+      const bonus=Math.min(p.sabCharge||0,CB.saber.maxDeflectBonus);
+      const dmg=(wDmg(WPN[w.id],w,p)+bonus)*p.dmgBoost;
+      const inArc=(ox,oy,orad)=>{
+        const dd=Math.hypot(ox-p.x,oy-p.y);
+        if(dd>CB.saber.reach+orad)return false;
+        const ea=Math.atan2(oy-p.y,ox-p.x);
+        for(let i=0;i<n;i++){ let da=ea-(p.sabA+i/n*TAU);
+          da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
+          if(Math.abs(da)<CB.saber.arc)return true; }
+        return false;
+      };
+      let struck=false;
       for(const e of S.en){ if(e.hp<=0)continue;
-        const dd=Math.hypot(e.x-p.x,e.y-p.y);
-        if(dd>CB.saber.reach+e.r)continue;
-        const ea=Math.atan2(e.y-p.y,e.x-p.x);
-        for(let i=0;i<n;i++){ let da=ea-(p.sabA+i/n*TAU);
-          da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.saber.arc){ damageE(e,dmg*dt*CB.saber.tickMult,p.id); break; } } }
-      for(const q of foePlayers(p)){ // same sweep, against hostile players
-        const dd=Math.hypot(q.x-p.x,q.y-p.y);
-        if(dd>CB.saber.reach+q.r)continue;
-        const ea=Math.atan2(q.y-p.y,q.x-p.x);
-        for(let i=0;i<n;i++){ let da=ea-(p.sabA+i/n*TAU);
-          da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.saber.arc){ hurt(q,dmg*dt*CB.saber.tickMult,p.id,true); break; } } } }
+        if(inArc(e.x,e.y,e.r)){ damageE(e,dmg,p.id); struck=true; } }
+      for(const q of foePlayers(p))
+        if(inArc(q.x,q.y,q.r)){ hurt(q,dmg,p.id); struck=true; }
+      if(struck){
+        p.sabTick=CB.saber.tickInterval;
+        p.sabCharge=0;                       // the stored parry damage is spent
+        p.t=Math.max(0,p.t-CB.saber.energyPerHit);
+        if(p.t<=0){p.t=0;p.tLock=true;}
+        sfxE('wSaber');
+      }
+    }
   }
   // servitor drones: seek & ram foes, soak enemy fire
   const DR=CB.drones;
@@ -584,9 +584,16 @@ function hostUpdate(dt){
     for(const e of S.en){ if(e.hp<=0)continue;
       if(dOwner&&!hostile(dOwner.team,e.team))continue; // servitors ignored team and chased friendly creeps
       const dd=(e.x-dn.x)**2+(e.y-dn.y)**2; if(dd<bd){bd=dd;tg=e;} }
-    if(tg){ const a=Math.atan2(tg.y-dn.y,tg.x-dn.x);
+    // Servitors are tethered: past maxRange from their owner they stop dead
+    // rather than chasing across the map, and only move again once the owner
+    // comes back within reach. dn.stuck drives the rendering cue.
+    const owner=S.players.get(dn.owner);
+    const ownDist=owner?Math.hypot(owner.x-dn.x,owner.y-dn.y):1e9;
+    dn.stuck=ownDist>DR.maxRange;
+    if(dn.stuck){ /* tethered out — holds position */ }
+    else if(tg){ const a=Math.atan2(tg.y-dn.y,tg.x-dn.x);
       dn.x+=Math.cos(a)*DR.speed*dt; dn.y+=Math.sin(a)*DR.speed*dt; }
-    else{ const o=S.players.get(dn.owner);
+    else{ const o=owner;
       if(o&&!o.dead&&Math.hypot(o.x-dn.x,o.y-dn.y)>DR.leashDist){
         const a=Math.atan2(o.y-dn.y,o.x-dn.x);
         dn.x+=Math.cos(a)*DR.returnSpeed*dt; dn.y+=Math.sin(a)*DR.returnSpeed*dt; } }
@@ -653,6 +660,11 @@ function hostUpdate(dt){
         const ddx=tx-b.x, ddy=ty-b.y, dd=Math.hypot(ddx,ddy)||1;
         b.x+=ddx/dd*b.rspd*dt; b.y+=ddy/dd*b.rspd*dt;
         if(dd<8)b.dead=true; }
+    }else if(b.orb){ // summoned fang: rides a wide circle around its owner
+      const o=S.players.get(b.owner);
+      if(!o||o.dead){ b.dead=true; }
+      else{ b.orbA+=BAL.combat.orbit.spinSpeed*dt;
+        b.x=o.x+Math.cos(b.orbA)*b.orbR; b.y=o.y+Math.sin(b.orbA)*b.orbR; }
     }else{ b.x+=b.vx*dt; b.y+=b.vy*dt; }
     b.ttl-=dt;
     // a player's bolts inherit their team, so they pass through friendly
@@ -680,8 +692,10 @@ function hostUpdate(dt){
         break;
       }
     }
-    if(b.ttl<=0||bulletHitsObstacle(b))b.dead=true;
-    if(b.dead&&b.boom&&!b.boomed){b.boomed=1;boom(b.x,b.y,b.boom,b.boomDmg,b.owner);}
+    if(b.ttl<=0||(!b.orb&&bulletHitsObstacle(b)))b.dead=true; // fangs sweep over cover
+    if(b.dead&&b.chain&&!b.chained){b.chained=1;chainBurst(b);} // arc where the bolt stopped
+    if(b.dead&&b.boom&&!b.boomed){b.boomed=1;boom(b.x,b.y,b.boom,b.boomDmg,b.owner);
+      if(b.orb)sfxE('orbPop');}
   }
   S.pb=S.pb.filter(b=>!b.dead);
   // enemy bullets
@@ -693,6 +707,9 @@ function hostUpdate(dt){
         for(let i=0;i<p.sabN;i++){ let da=ba-(p.sabA+i/p.sabN*TAU);
           da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
           if(Math.abs(da)<CB.saber.deflectArc){ b.dead=true; sfxE('deflect');
+            // every parried bolt feeds the next saber strike, up to the cap
+            p.sabCharge=Math.min(CB.saber.maxDeflectBonus,(p.sabCharge||0)+CB.saber.deflectBonus);
+            sfxE('sabCharge');
             S.fx.push({x:b.x,y:b.y,vx:rnd(-30,30),vy:rnd(-30,30),l:.2,ci:'#7cff6b'}); break; } } }
       if(b.dead)break; }
     // servitors soak enemy fire
@@ -730,6 +747,14 @@ function hostUpdate(dt){
         else if(it.k===2){openChest(p);sfxE('chest');}
         break;}}}
   S.it=S.it.filter(i=>!i.dead);
+  // orbital smite marks: a shrinking ring that then detonates where it was
+  // planted — it does NOT follow the target, so stepping out is the counter
+  for(const m of S.mk){ m.t-=dt;
+    if(m.t<=0&&!m.done){ m.done=1; smiteHit(m); } }
+  S.mk=S.mk.filter(m=>!m.done);
+  // chain-lightning arc segments (visual only, host + clients)
+  for(const a of S.ar)a.l-=dt;
+  S.ar=S.ar.filter(a=>a.l>0);
   // fx
   for(const f of S.fx){f.x+=f.vx*dt;f.y+=f.vy*dt;f.l-=dt;}
   S.fx=S.fx.filter(f=>f.l>0);

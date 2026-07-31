@@ -148,7 +148,11 @@ function snap(){
   const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
   const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
-  const dr=S.dr.map(d2=>[Math.round(d2.x),Math.round(d2.y),Math.round(d2.hp/d2.maxhp*100)]);
+  const dr=S.dr.map(d2=>[Math.round(d2.x),Math.round(d2.y),Math.round(d2.hp/d2.maxhp*100),d2.stuck?1:0]);
+  const mk=S.mk.map(m=>[Math.round(m.x),Math.round(m.y),Math.round(m.r),Math.round(m.r0),
+    Math.round(m.t*100),Math.round(m.tMax*100)]);
+  const ar=S.ar.map(a2=>[Math.round(a2.x1),Math.round(a2.y1),Math.round(a2.x2),Math.round(a2.y2)]);
+  const shp=S.shops?S.shops.map(o=>[Math.round(o.x),Math.round(o.y),o.team,o.k==='merc'?0:1,Math.round(o.cd)]):0;
   const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r)]);
   let ob=0;
   if(S.obj)ob=[OBJ_TYS.indexOf(S.obj.ty),Math.round(S.obj.prog),Math.round(S.obj.goal),
@@ -158,13 +162,13 @@ function snap(){
   let mb=0;
   if(S.moba){ const n0=S.en.find(e=>e.k==='nexus'&&e.team===0), n1=S.en.find(e=>e.k==='nexus'&&e.team===1);
     mb=[n0?Math.round(n0.hp/n0.maxhp*100):0, n1?Math.round(n1.hp/n1.maxhp*100):0, S.mobaOver||0]; }
-  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,ob,sx,mb,pvp:S.pvp?1:0,ts:now()};
+  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,mk,ar,shp,ob,sx,mb,pvp:S.pvp?1:0,ts:now()};
 }
 function bcast(m){ for(const c of conns){try{c.send(m)}catch(e){}} }
 function sendTo(pid,m){ const c=conns.find(c=>c._pid===pid); if(c){try{c.send(m)}catch(e){}} }
 
 /* ---------------- client view ---------------- */
-function blankView(){return {players:new Map(),en:new Map(),eb:[],pb:[],it:[],dr:[],zn:[],obj:0,
+function blankView(){return {players:new Map(),en:new Map(),eb:[],pb:[],it:[],dr:[],zn:[],mk:[],ar:[],shp:0,obj:0,
   wave:1,score:0,snapT:0,snapDt:80,pvp:false};}
 function applySnap(s){
   if(!V)V=blankView();
@@ -209,6 +213,7 @@ function applySnap(s){
     e.lang=(lang||0)/100; e.llen=llen||0; e.laserOn=!!llen;}
   for(const id of [...V.en.keys()]) if(!seenE.has(id))V.en.delete(id);
   V.eb=s.eb; V.pb=s.pb; V.it=s.it; V.dr=s.dr||[]; V.zn=s.zn||[]; V.obj=s.ob||0;
+  V.mk=s.mk||[]; V.ar=s.ar||[]; V.shp=s.shp||0; // smite marks, chain arcs, shard pads
   V.mb=s.mb||0; // Nexus Siege HUD: [nexus0 hp%, nexus1 hp%, winner]
 }
 /* ---- latency compensation ----------------------------------------

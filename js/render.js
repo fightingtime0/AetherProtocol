@@ -109,25 +109,101 @@ function render(){
   if(isHost)for(const f of fxList){ctx.globalAlpha=Math.min(1,f.l*3);ctx.fillStyle=f.ci;
     ctx.fillRect(Math.round(f.x),Math.round(f.y),1,1);}
   ctx.globalAlpha=1;
+  // shard pads (Nexus Siege): mercenary + cache purchase spots
+  const shops=isHost?(S.shops||0):(V?V.shp:0);
+  if(shops)for(const o of shops){
+    const ox=isHost?o.x:o[0], oy=isHost?o.y:o[1];
+    const oteam=isHost?o.team:o[2], merc=isHost?(o.k==='merc'):(o[3]===0);
+    const ocd=isHost?o.cd:o[4];
+    if(!vis(ox,oy,34))continue;
+    const R=MOBA?MOBA.shop.radius:26;
+    ctx.globalAlpha=ocd>0?.15:.32;
+    ctx.strokeStyle=teamColor(oteam); ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(ox,oy,R,0,TAU);ctx.stroke();
+    ctx.globalAlpha=ocd>0?.25:.8;
+    ctx.font='bold 8px monospace'; ctx.textAlign='center';
+    ctx.fillStyle=teamColor(oteam);
+    ctx.fillText(merc?'⚔':'▣',Math.round(ox),Math.round(oy)+3);
+    ctx.globalAlpha=1;
+  }
+  /* Velocity-aligned streak behind fast rounds. Derived from speed rather
+     than a per-weapon flag, so it needs no protocol change and every fast
+     weapon (rail, boomerang, erratic…) gets a trail automatically. */
+  const TR=BAL.combat.trail;
+  function streak(bx,by,vx,vy,col){
+    const sp=Math.hypot(vx,vy);
+    if(sp<TR.minSpeed)return;
+    const len=Math.min(TR.maxLen,sp*TR.scale), ux=vx/sp, uy=vy/sp;
+    ctx.globalAlpha=.35; ctx.strokeStyle=col; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx-ux*len,by-uy*len); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
   // enemy bullets
   const bt=bulletLead(); // latency-compensated; identical to checkLocalHits()
   for(const b of eb){
-    let bx,by,ci,br;
-    if(isHost){bx=b.x;by=b.y;ci=b.ci;br=b.r;}
-    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];br=b[6];}
+    let bx,by,ci,br,bvx,bvy;
+    if(isHost){bx=b.x;by=b.y;ci=b.ci;br=b.r;bvx=b.vx;bvy=b.vy;}
+    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];br=b[6];bvx=b[3];bvy=b[4];}
     if(!vis(bx,by,4))continue;
-    ctx.fillStyle=EBCOLS[ci]||'#fff';
+    const col=EBCOLS[ci]||'#fff';
+    streak(bx,by,bvx,bvy,col);
+    ctx.fillStyle=col;
     ctx.fillRect(Math.round(bx-br),Math.round(by-br),br*2,br*2);
     ctx.fillStyle='rgba(255,255,255,.85)';ctx.fillRect(Math.round(bx),Math.round(by),1,1);
   }
   // player bullets
   for(const b of pb){
-    let bx,by,ci;
-    if(isHost){bx=b.x;by=b.y;ci=b.ci;}
-    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];}
-    if(!vis(bx,by,4))continue;
-    ctx.fillStyle=PB_COLS[ci]||'#ffd35c';
+    let bx,by,ci,bvx,bvy;
+    if(isHost){bx=b.x;by=b.y;ci=b.ci;bvx=b.orb?0:b.vx;bvy=b.orb?0:b.vy;}
+    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];bvx=b[3];bvy=b[4];}
+    if(!vis(bx,by,5))continue;
+    const col=PB_COLS[ci]||'#ffd35c';
+    streak(bx,by,bvx,bvy,col);
+    // summoned fangs read as spinning blades rather than bullets
+    if(isHost&&b.orb){
+      ctx.globalAlpha=.9; ctx.strokeStyle=col; ctx.lineWidth=1;
+      const a=b.orbA*3, s=3;
+      ctx.beginPath();
+      ctx.moveTo(bx-Math.cos(a)*s,by-Math.sin(a)*s);
+      ctx.lineTo(bx+Math.cos(a)*s,by+Math.sin(a)*s);
+      ctx.stroke(); ctx.globalAlpha=1;
+      continue;
+    }
+    ctx.fillStyle=col;
     ctx.fillRect(Math.round(bx-1),Math.round(by-1),3,2);
+  }
+  // chain-lightning arcs — shows exactly what got zapped, and in what order
+  const arcs=isHost?(S.ar||[]):(V&&V.ar||[]);
+  for(const a of arcs){
+    const x1=isHost?a.x1:a[0], y1=isHost?a.y1:a[1];
+    const x2=isHost?a.x2:a[2], y2=isHost?a.y2:a[3];
+    ctx.globalAlpha=isHost?Math.min(1,a.l*5):.9;
+    ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x1,y1);
+    // a couple of jagged midpoints so it reads as lightning, not a line
+    const segs=3;
+    for(let i=1;i<segs;i++){
+      const t=i/segs;
+      ctx.lineTo(x1+(x2-x1)*t+rnd(-3,3), y1+(y2-y1)*t+rnd(-3,3));
+    }
+    ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+  // orbital smite: ring shrinks onto the marked spot, then it detonates
+  const marks=isHost?(S.mk||[]):(V&&V.mk||[]);
+  for(const m of marks){
+    const mx=isHost?m.x:m[0], my=isHost?m.y:m[1];
+    const rEnd=isHost?m.r:m[2], r0=isHost?m.r0:m[3];
+    const t=isHost?m.t:(m[4]/100), tMax=isHost?m.tMax:(m[5]/100);
+    if(!vis(mx,my,r0+6))continue;
+    const k=tMax>0?clamp(t/tMax,0,1):0;
+    const rr=rEnd+(r0-rEnd)*k;                 // shrinks toward the blast radius
+    ctx.globalAlpha=.9-k*.45;
+    ctx.strokeStyle='#ffd35c'; ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(mx,my,rr,0,TAU);ctx.stroke();
+    ctx.globalAlpha=.25;
+    ctx.beginPath();ctx.arc(mx,my,rEnd,0,TAU);ctx.stroke();  // the actual blast
+    ctx.globalAlpha=1;
   }
   // enemies
   for(const e of en){
@@ -172,8 +248,15 @@ function render(){
   for(const dn of drs){
     const dxx=isHost?dn.x:dn[0], dyy=isHost?dn.y:dn[1];
     const hpp=isHost?dn.hp/dn.maxhp:(dn[2]||0)/100;
+    const stuck=isHost?dn.stuck:!!dn[3];
     if(!vis(dxx,dyy,8))continue;
+    // tethered out of range: dimmed with a broken-link ring so it's obvious
+    // why it stopped following
+    if(stuck){ ctx.globalAlpha=.45;
+      ctx.strokeStyle='#ff5c47'; ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(dxx,dyy,6,0,TAU);ctx.stroke(); }
     drawImgC(SPRC.drone.c,dxx,dyy,0);
+    ctx.globalAlpha=1;
     ctx.fillStyle='#060810';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),8,1);
     ctx.fillStyle='#4ef0e8';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),Math.round(8*clamp(hpp,0,1)),1);
   }

@@ -81,6 +81,34 @@ const SFX={
   objfail: {gap:500,f:()=>arp([330,165],.11,.22,.1,'sawtooth')},
   gameover:{gap:900,f:()=>arp([220,165,110,55],.16,.4,.16,'sawtooth')},
   click:   {gap:60, f:()=>tone({f0:1000,f1:800,d:.035,v:.04,w:'sine'})},
+
+  /* ---- one voice per weapon (weapons.json "sfx" picks these) ----
+     Each is built from a different waveform/envelope/register so the
+     weapons stay distinguishable by ear in a crowded fight. */
+  wBolt:   {gap:50, f:()=>tone({f0:820,f1:300,d:.05,v:.035,w:'square'})},
+  wNova:   {gap:120,f:()=>{tone({f0:300,f1:900,d:.16,v:.06,w:'sine'});noise({f0:1400,f1:400,d:.14,v:.05,ft:'bandpass'});}},
+  wRail:   {gap:110,f:()=>{tone({f0:1500,f1:180,d:.13,v:.07,w:'sawtooth'});noise({f0:3000,f1:900,d:.07,v:.04,ft:'highpass'});}},
+  wSeeker: {gap:200,f:()=>arp([520,700,940],.05,.1,.05,'sine')},
+  wFrost:  {gap:90, f:()=>{tone({f0:1700,f1:1050,d:.08,v:.04,w:'sine'});noise({f0:5200,f1:2400,d:.07,v:.03,ft:'highpass'});}},
+  wOrbit:  {gap:200,f:()=>{tone({f0:340,f1:760,d:.18,v:.06,w:'triangle'});tone({f0:170,f1:380,d:.2,v:.04,w:'sine',delay:.03});}},
+  wSaber:  {gap:110,f:()=>{tone({f0:2100,f1:640,d:.09,v:.05,w:'sawtooth'});noise({f0:3600,f1:800,d:.06,v:.035,ft:'bandpass'});}},
+  wFire:   {gap:120,f:()=>{noise({f0:700,f1:180,d:.14,v:.08,ft:'lowpass'});tone({f0:180,f1:70,d:.12,v:.06,w:'sawtooth'});}},
+  wChain:  {gap:100,f:()=>{noise({f0:4200,f1:1400,d:.09,v:.06,ft:'highpass'});tone({f0:1250,f1:520,d:.07,v:.04,w:'square'});}},
+  wSmite:  {gap:180,f:()=>{tone({f0:130,f1:60,d:.26,v:.09,w:'sine'});tone({f0:900,f1:1500,d:.1,v:.04,w:'sine',delay:.02});}},
+  wVenom:  {gap:80, f:()=>tone({f0:420,f1:230,d:.08,v:.035,w:'triangle'})},
+  wSigil:  {gap:200,f:()=>{tone({f0:90,f1:190,d:.3,v:.08,w:'sine'});tone({f0:270,f1:150,d:.24,v:.04,w:'triangle',delay:.04});}},
+  wBomb:   {gap:160,f:()=>tone({f0:260,f1:120,d:.16,v:.07,w:'triangle'})},
+  wScatter:{gap:90, f:()=>noise({f0:2000,f1:350,d:.11,v:.08,ft:'bandpass'})},
+  wBeam:   {gap:150,f:()=>tone({f0:640,f1:700,d:.13,v:.03,w:'sawtooth'})},
+  wWob:    {gap:100,f:()=>tone({f0:560,f1:900,d:.11,v:.045,w:'sine'})},
+  wRang:   {gap:130,f:()=>{tone({f0:780,f1:1180,d:.1,v:.05,w:'triangle'});tone({f0:1180,f1:780,d:.1,v:.03,w:'triangle',delay:.09});}},
+
+  /* impact / mechanic voices */
+  orbPop:  {gap:70, f:()=>{noise({f0:1600,f1:300,d:.11,v:.07,ft:'bandpass'});tone({f0:300,f1:90,d:.1,v:.05,w:'triangle'});}},
+  smiteHit:{gap:140,f:()=>{noise({f0:1100,f1:70,d:.32,v:.16});tone({f0:150,f1:45,d:.28,v:.12,w:'sawtooth'});}},
+  sabCharge:{gap:90,f:()=>tone({f0:900,f1:1600,d:.07,v:.03,w:'sine'})},
+  buy:     {gap:250,f:()=>arp([523,659,880,1174],.06,.13,.08,'sine')},
+  denied:  {gap:250,f:()=>tone({f0:220,f1:120,d:.16,v:.07,w:'square'})},
 };
 function sfx(n){
   const s=SFX[n]; if(!s||!AC||save.mute)return;

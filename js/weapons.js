@@ -26,6 +26,8 @@ function droneStats(def,lvl,rar,p){
            dmg:scaleVal(def.dmg,lvl)*dm*(p?p.st.dmgM:1) };
 }
 
+// orbit deliberately absent: fangs are summoned around the player, so the
+// weapon must fire even with nothing in range
 const NEEDS_TARGET={aimed:1,lance:1,lob:1,chain:1,smite:1,zone:1,scatter:1,beam:1,wave:1,boomerang:1};
 const BEHAVIORS={
   aimed(def,p,w,tg){
@@ -68,24 +70,36 @@ const BEHAVIORS={
       dmg:dmg*(def.impactFrac||.3),r:def.r||2.5,ci:def.ci||5,
       ttl:d2/sp,boom:scaleVal(def.boom,w.lvl),boomDmg:dmg,owner:p.id});
   },
-  chain(def,p,w,tg){
-    const hops=cnt(def.hops,w.lvl), dmg=wDmg(def,w,p);
-    let cur=tg; const hit=new Set();
-    // hostile players are valid links in the chain, not just entities
-    const foes=foePlayers(p);
-    const key=o=>(o.weapons?'p':'e')+o.id; // player and entity ids overlap — keep them distinct
-    for(let i=0;i<hops&&cur;i++){ hit.add(key(cur));
-      if(cur.weapons)hurt(cur,dmg,p.id); else damageE(cur,dmg,p.id);
-      for(let j=0;j<5;j++)S.fx.push({x:cur.x,y:cur.y,vx:rnd(-45,45),vy:rnd(-45,45),l:.25,ci:'#4ef0e8'});
-      let nx=null,bd=def.range*def.range;
-      for(const e of S.en) if(!hit.has('e'+e.id)&&e.hp>0){
-        const d=(e.x-cur.x)**2+(e.y-cur.y)**2; if(d<bd){bd=d;nx=e;} }
-      for(const q of foes) if(!hit.has('p'+q.id)&&!q.dead){
-        const d=(q.x-cur.x)**2+(q.y-cur.y)**2; if(d<bd){bd=d;nx=q;} }
-      cur=nx; }
+  /* Orbiting Fang — now an active summon: costs charge, the fangs orbit
+     wide on their own, and each detonates on whatever it touches. They
+     ride S.pb as bullets with an `orb` flag, so collision, explosion,
+     snapshotting and rendering all come for free. */
+  orbit(def,p,w){
+    const OB=BAL.combat.orbit, n=cnt(def.blades,w.lvl), dmg=wDmg(def,w,p);
+    const base=rnd(0,TAU);
+    for(let i=0;i<n;i++){
+      pbul({x:p.x,y:p.y,vx:0,vy:0,dmg,r:def.r||2,ci:def.ci||3,owner:p.id,
+        ttl:OB.life,pierce:0,
+        orb:1, orbA:base+i/n*TAU, orbR:OB.radius,
+        boom:scaleVal(def.boom,w.lvl)||OB.boom,
+        boomDmg:dmg*(OB.boomDmgFrac||.85)});
+    }
   },
+  /* Orbital Smite — marks a SPOT, shrinks a targeting ring onto it, then
+     hits that spot. Deliberately does not track the target: dodging out
+     of the circle is the counterplay. */
   smite(def,p,w,tg){
-    boom(tg.x,tg.y,scaleVal(def.boom,w.lvl),wDmg(def,w,p),p.id,'#ffd35c');
+    const SB=BAL.combat.smite;
+    S.mk.push({x:tg.x,y:tg.y,t:SB.markTime,tMax:SB.markTime,
+      r0:SB.startRadius,r:scaleVal(def.boom,w.lvl),
+      dmg:wDmg(def,w,p),owner:p.id});
+  },
+  chain(def,p,w,tg){
+    // now travels as a bolt; the chain only fires where it lands (see S.pb)
+    const a=Math.atan2(tg.y-p.y,tg.x-p.x), sp=def.speed||210;
+    pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      dmg:wDmg(def,w,p),r:def.r||2,ci:def.ci||1,owner:p.id,ttl:1.6,pierce:0,
+      chain:{hops:cnt(def.hops,w.lvl),range:def.range||85}});
   },
   zone(def,p,w,tg){
     S.zn.push({x:tg.x,y:tg.y,r:scaleVal(def.radius,w.lvl),
@@ -93,8 +107,10 @@ const BEHAVIORS={
   },
   drone(def,p,w){
     const st2=droneStats(def,w.lvl,w.rar,p);
+    // drone:1 + team make servitors first-class targets — creeps, structures
+    // and siege lords can pick them, exactly like a creep
     S.dr.push({x:p.x+rnd(-6,6),y:p.y+rnd(-6,6),hp:st2.hp,maxhp:st2.hp,
-      dmg:st2.dmg,owner:p.id,hitCd:0,r:3});
+      dmg:st2.dmg,owner:p.id,hitCd:0,r:3,drone:1,team:p.team,stuck:false});
   },
   beam(def,p,w,tg){ // continuous laser: hitscan tick that pierces everyone in the line
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), range=def.range||220, dmg=wDmg(def,w,p);
@@ -130,8 +146,40 @@ const BEHAVIORS={
       rang:1,outT:def.outT||0.5,rspd:sp*1.15,rt:0,returning:false});
   },
 };
+/* Resolved from hostUpdate once a smite mark's timer expires. */
+function smiteHit(m){
+  boom(m.x,m.y,m.r,m.dmg,m.owner,'#ffd35c');
+  sfxE('smiteHit');
+}
+/* Chain burst, fired where the Arc Discharge bolt lands. Every hop is
+   recorded in S.ar so host and clients draw the arcs that actually hit. */
+function chainBurst(b){
+  const p=S.players.get(b.owner);
+  const hops=b.chain.hops, dmg=b.dmg, range=b.chain.range;
+  let cur={x:b.x,y:b.y,id:-1};
+  const hit=new Set();
+  const foes=p?foePlayers(p):[];
+  for(let i=0;i<hops&&cur;i++){
+    if(cur.id!==-1){ // the seed point is where the bolt landed, not a target
+      hit.add((cur.weapons?'p':'e')+cur.id);
+      if(cur.weapons)hurt(cur,dmg,b.owner); else damageE(cur,dmg,b.owner);
+    }
+    let nx=null,bd=range*range;
+    for(const e of S.en) if(!hit.has('e'+e.id)&&e.hp>0){
+      if(p&&!hostile(p.team,e.team))continue;
+      const d=(e.x-cur.x)**2+(e.y-cur.y)**2; if(d<bd){bd=d;nx=e;} }
+    for(const q of foes) if(!hit.has('p'+q.id)&&!q.dead){
+      const d=(q.x-cur.x)**2+(q.y-cur.y)**2; if(d<bd){bd=d;nx=q;} }
+    if(nx){
+      S.ar.push({x1:cur.x,y1:cur.y,x2:nx.x,y2:nx.y,l:BAL.combat.chainArc.life});
+      for(let j=0;j<4;j++)S.fx.push({x:nx.x,y:nx.y,vx:rnd(-45,45),vy:rnd(-45,45),l:.25,ci:'#4ef0e8'});
+    }
+    cur=nx;
+  }
+}
 function attachBehavior(def){
-  if(def.type==='orbit'){ def.passiveOrbit=1; def.needT=0; def.fire=()=>{}; return; }
+  // orbit is no longer a passive aura — it is an active summon that costs
+  // charge, so it goes through the normal fire path like everything else
   if(def.type==='saber'){ def.passiveSaber=1; def.needT=0; def.fire=()=>{}; return; }
   const b=BEHAVIORS[def.type];
   if(!b)throw new Error('unknown weapon type "'+def.type+'" on '+def.id);

@@ -1,20 +1,23 @@
 {
   "_comment": "NEXUS SIEGE (MOBA mode). Lane runs left-to-right; team 0 holds the left base, team 1 the right. Structure x positions are fractions of world width for team 0 and are mirrored (1-f) for team 1.",
-
   "difficulty": "normal",
-  "world": { "w": 5400, "h": 400 },
+  "world": {
+    "w": 5400,
+    "h": 400
+  },
   "obstacles": 120,
-  "obstacleRadius": [6, 15],
+  "obstacleRadius": [
+    6,
+    15
+  ],
   "laneHalfHeight": 110,
-
   "positions": {
-    "spawn":    0.035,
-    "nexus":    0.095,
-    "baseboss": 0.170,
-    "turret":   0.310
+    "spawn": 0.035,
+    "nexus": 0.095,
+    "baseboss": 0.17,
+    "turret": 0.31
   },
   "guardianOffset": 70,
-
   "_siegeLord": "Boss-wave miniboss: the base guardian's moveset (volleys + telegraphed lunge) but it marches the lane, has no laser, and is weaker than a real guardian.",
   "siegeLord": {
     "everyNWaves": 3,
@@ -27,9 +30,9 @@
     "chargeWindup": 0.65,
     "chargeTime": 0.85,
     "chargeSpeed": 235,
-    "chargeCooldown": 5.0
+    "chargeCooldown": 5.0,
+    "dropRadius": 340
   },
-
   "nexus": {
     "auraRadius": 300,
     "auraDamage": 0.18,
@@ -66,15 +69,14 @@
     "laserWidth": 4,
     "laserDps": 28
   },
-
   "xp": {
     "base": 60,
     "growth": 1.25,
     "scoreToXp": 0.5,
     "minUnit": 4,
-    "playerKill": 120
+    "playerKill": 120,
+    "assistFrac": 0.1
   },
-
   "bot": {
     "engageRadius": 340,
     "standoffRange": 150,
@@ -82,10 +84,14 @@
     "retreatHpFrac": 0.35,
     "speedFrac": 0.9
   },
-
-  "teamNames": ["AZURE", "CRIMSON"],
-  "teamColors": ["#4ef0e8", "#ff4fd8"],
-
+  "teamNames": [
+    "AZURE",
+    "CRIMSON"
+  ],
+  "teamColors": [
+    "#4ef0e8",
+    "#ff4fd8"
+  ],
   "creep": {
     "meleePerWave": 3,
     "rangedPerWave": 2,
@@ -96,11 +102,24 @@
     "meleeRange": 22,
     "shotInterval": 1.6,
     "bulletSpeed": 78,
-    "hpPerWave": 0.12
+    "hpPerWave": 0.12,
+    "chaseRadius": 250,
+    "dropRadius": 330
   },
-
   "creepInterval": 30,
   "respawnDelay": 10,
   "respawnInvuln": 3,
-  "pvpDamageMult": 1.0
+  "pvpDamageMult": 1.0,
+  "shop": {
+    "_comment": "Shard-funded objectives sitting just off the lane at mid-map, one per side.",
+    "offsetFromCentre": 0.11,
+    "laneOffsetY": 0.34,
+    "radius": 26,
+    "creepCost": 140,
+    "chestCost": 90,
+    "creepCooldown": 25,
+    "chestCooldown": 30,
+    "mercHpMul": 1.9,
+    "mercCount": 2
+  }
 }

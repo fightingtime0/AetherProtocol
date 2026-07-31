@@ -106,7 +106,7 @@ function newMobaSim(playersInfo){
   if(DIFFS[MOBA.difficulty||'normal'])diffKey=MOBA.difficulty||'normal';
   obstacles=genMobaWorld();
   eidc=1; bidc=1;
-  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],obj:null,sx:[],
+  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],obj:null,sx:[],
      wave:1,score:0,t:0,waveT:0,
      spawnQ:[],spawnT:0,waveDone:true,miniSpawned:true,over:false,shake:0,
      pvp:true,          // opposing players can shoot each other
@@ -122,6 +122,7 @@ function newMobaSim(playersInfo){
     S.players.set(pi.id,p);
   });
   mobaSpawnStructures();
+  mobaSpawnShops();
 }
 /* Respawn at your own base, keeping everything earned — a siege death
    costs you time, not progress. Deliberately does NOT go through
@@ -170,6 +171,7 @@ function mobaUpdate(dt){
       return;
     }
   }
+  mobaShopTick(dt);
   // creep waves
   S.creepT-=dt;
   if(S.creepT<=0){ S.creepT=MOBA.creepInterval; spawnCreepWave(); }
@@ -201,9 +203,80 @@ function mobaXpForEntity(e){
 }
 function mobaOnPlayerKill(killer,victim){
   grantXp(killer,MOBA.xp.playerKill);
+  grantAssistXp(killer,MOBA.xp.playerKill,victim);
   killer.score=(killer.score||0)+1;
   toastAll(killer.name+' slew '+victim.name);
   sfxE('bosskill');
+}
+/* Everyone else on the killer's side gets a share of the XP, so a player
+   who softened a target up (or is simply holding the lane) still climbs.
+   Excludes the killer, who already got the full amount. */
+function grantAssistXp(killer,fullXp,victim){
+  // deliberately NOT rounded: a creep is worth ~4 XP, so Math.round(4*0.1)
+  // is 0 and allies would earn nothing at all from ordinary kills. XP
+  // accumulates fractionally and is only rounded for display/snapshot.
+  const share=fullXp*(MOBA.xp.assistFrac||0);
+  if(share<=0)return;
+  for(const q of S.players.values()){
+    if(q===killer||q===victim||q.dead)continue;
+    if(killer&&q.team!==killer.team)continue;
+    grantXp(q,share);
+  }
+}
+
+/* ---------------- shard shop ----------------
+   Two capture-style pads sit just off the lane near mid-map, one per side:
+   stand on one with enough shards and it spends them. The mercenary pad
+   buys a pair of buffed charging creeps; the cache pad buys a chest. Both
+   go on cooldown afterwards so they can't be spammed. */
+function mobaSpawnShops(){
+  const SH=MOBA.shop, cx=WW/2, y0=WH/2;
+  S.shops=[];
+  for(let team=0;team<2;team++){
+    const side=team===0?-1:1;
+    S.shops.push({k:'merc', team, cd:0,
+      x:cx+side*WW*SH.offsetFromCentre, y:y0-WH*SH.laneOffsetY});
+    S.shops.push({k:'chest',team, cd:0,
+      x:cx+side*WW*SH.offsetFromCentre, y:y0+WH*SH.laneOffsetY});
+  }
+}
+function mobaShopTick(dt){
+  const SH=MOBA.shop;
+  for(const sh of S.shops){
+    sh.cd=Math.max(0,sh.cd-dt);
+    if(sh.cd>0)continue;
+    for(const p of S.players.values()){
+      if(p.dead||p.team!==sh.team)continue;
+      if(Math.hypot(p.x-sh.x,p.y-sh.y)>SH.radius)continue;
+      const cost=sh.k==='merc'?SH.creepCost:SH.chestCost;
+      if(p.shards<cost){
+        if(p.id===myId&&!p.shopWarn){ p.shopWarn=1; toast('Need ◆'+cost); sfxE('denied'); }
+        continue;
+      }
+      p.shards-=cost;
+      sh.cd=sh.k==='merc'?SH.creepCooldown:SH.chestCooldown;
+      sfxE('buy');
+      if(sh.k==='merc')mobaBuyMercs(p.team);
+      else S.it.push({k:2,x:sh.x,y:sh.y});
+      toastAll(p.name+(sh.k==='merc'?' hired mercenaries!':' cracked a cache!'));
+      break;
+    }
+  }
+  for(const p of S.players.values())p.shopWarn=0;
+}
+/* Bought mercenaries: tougher than a line creep, weaker than a siege lord,
+   and they only ever charge — straight down the lane at the enemy nexus. */
+function mobaBuyMercs(team){
+  const SH=MOBA.shop;
+  const sp=mobaSpawn(team);
+  const goalX=team===0?WW*(1-MOBA.positions.nexus):WW*MOBA.positions.nexus;
+  for(let i=0;i<SH.mercCount;i++){
+    const e=mkTeamEnt('creep',team,sp.x+rnd(-20,20),sp.y+rnd(-30,30),SH.mercHpMul);
+    e.goalX=goalX; e.goalY=WH/2;
+    e.merc=1;
+    e.spd*=1.25;
+    S.en.push(e);
+  }
 }
 
 /* ---------------- creeps ---------------- */

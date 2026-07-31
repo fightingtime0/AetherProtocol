@@ -44,12 +44,25 @@ function structFoe(e,range){
     if(o===e||o.hp<=0||o.struct||!hostile(e.team,o.team))continue;
     const d=(o.x-e.x)**2+(o.y-e.y)**2; if(d<bd){bd=d;best=o;}
   }
-  if(best)return best;                      // creeps take priority
+  for(const dn of S.dr){ // servitors count as creeps for targeting purposes
+    if(dn.hp<=0||!hostile(e.team,dn.team))continue;
+    const d=(dn.x-e.x)**2+(dn.y-e.y)**2; if(d<bd){bd=d;best=dn;}
+  }
+  if(best)return best;                      // creeps/servitors take priority
   for(const q of S.players.values()){
     if(q.dead||!hostile(e.team,q.team))continue;
     const d=(q.x-e.x)**2+(q.y-e.y)**2; if(d<bd){bd=d;best=q;}
   }
   return best;
+}
+/* One entry point for "damage whatever structFoe handed back", since that
+   can now be an entity, a player or a servitor and each takes damage a
+   different way. */
+function hitTarget(t,dmg,srcId,dot){
+  if(!t)return;
+  if(t.drone){ t.hp-=dmg; return; }
+  if(t.weapons){ hurt(t,dmg,srcId,dot); return; }
+  damageE(t,dmg,srcId,dot);
 }
 /* Continuous lance shared by nexus / turret / guardian. Burns everything
    hostile along the line; lang/llen ride the snapshot so clients draw it. */
@@ -72,6 +85,10 @@ function structLaser(e,tgt,dt,cfg){
   for(const o of S.en){
     if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
     if(bite(o))damageE(o,cfg.laserDps*dt,undefined,true);
+  }
+  for(const dn of S.dr){ // servitors burn in the beam like anything else
+    if(dn.hp<=0||!hostile(e.team,dn.team))continue;
+    if(bite(dn))dn.hp-=cfg.laserDps*dt;
   }
 }
 function nearestPlayer(e){
@@ -167,16 +184,23 @@ function enemyAct(e,dt){
      if(e.cd<=0){ e.cd=1.8; ebul(e.x,e.y,aim,62,2); }
      break;
    case 'creep':{ const C=MOBA.creep;
-     // March down the lane toward the enemy nexus; break off to fight
-     // anything hostile that comes close (player, creep or structure),
-     // then resume once it is gone. `p` is whatever nearestFoe() chose.
+     // Sweeps the area around it rather than only reacting at weapon range:
+     // anything hostile inside chaseRadius gets pursued, and once locked on
+     // it keeps chasing out to dropRadius (hysteresis) so a player sitting
+     // just past the edge is still hunted instead of ignored.
      const ranged=!!ET[ETI[e.k]].ranged;
-     if(d<C.aggroRadius){
+     // bought mercenaries never stop to skirmish — they only ever charge
+     const lock=e.merc?0:(e.aggro?C.dropRadius:C.chaseRadius);
+     const tg=lock?structFoe(e,lock):null;
+     e.aggro=!!tg;
+     if(tg){
+       const ta=Math.atan2(tg.y-e.y,tg.x-e.x), td=Math.hypot(tg.x-e.x,tg.y-e.y);
        const stop=ranged?C.attackRange:C.meleeRange;
-       if(d>stop)mv(dx/d,dy/d);
-       if(ranged){ if(e.cd<=0){ e.cd=C.shotInterval; ebul(e.x,e.y,aim,C.bulletSpeed,2,1.5,e.team); } }
-       else if(d<=C.meleeRange+2&&e.cd<=0){ // melee creeps jab at point blank
-         e.cd=C.shotInterval*.6; ebul(e.x,e.y,aim,120,3,1.5,e.team); }
+       if(td>stop){ e.x+=Math.cos(ta)*e.spd*sm*dt; e.y+=Math.sin(ta)*e.spd*sm*dt; }
+       if(ranged){ if(td<C.attackRange+8&&e.cd<=0){ e.cd=C.shotInterval;
+           ebul(e.x,e.y,ta,C.bulletSpeed,2,1.5,e.team); } }
+       else if(td<=C.meleeRange+2&&e.cd<=0){ // melee creeps jab at point blank
+         e.cd=C.shotInterval*.6; ebul(e.x,e.y,ta,120,3,1.5,e.team); }
      }else{
        const gx=e.goalX-e.x, gy=e.goalY-e.y, gd=Math.hypot(gx,gy)||1;
        e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt;
@@ -197,7 +221,10 @@ function enemyAct(e,dt){
          e.st=3; e.stT=.6; e.tpT=L.chargeCooldown; if(hitObs){e.x=ox;e.y=oy;} } }
      else if(e.st===3){ e.stT-=dt; if(e.stT<=0)e.st=0; }
      else{
-       const tg=structFoe(e,L.aggroRadius);        // creeps first, then players
+       // same sweep-and-hold behaviour as creeps: wide pull-in, wider let-go
+       const lockR=e.aggro?(L.dropRadius||L.aggroRadius):L.aggroRadius;
+       const tg=structFoe(e,lockR);                // creeps first, then players
+       e.aggro=!!tg;
        if(tg){
          const ta=Math.atan2(tg.y-e.y,tg.x-e.x), td=Math.hypot(tg.x-e.x,tg.y-e.y);
          if(td>L.standoff){ e.x+=Math.cos(ta)*e.spd*sm*dt; e.y+=Math.sin(ta)*e.spd*sm*dt; }
