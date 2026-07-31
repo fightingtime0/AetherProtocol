@@ -51,6 +51,9 @@ function respawnPersistent(p){
   applyMetaObj(np,p.metaObj);
   np.x=rnd(20,WW-20); np.y=rnd(20,WH-20); // infinity/Battleground has no obstacles to dodge
   np.shards=shards;
+  np.team=p.team; // mkPlayer() has no concept of teams — without this a
+                  // respawned siege player turns neutral and can shoot its own base
+  np.bot=p.bot;   // ...and a respawned bot would stop thinking entirely
   np.inv=(BAL.battleground&&BAL.battleground.respawnInvuln)||10;
   S.players.set(p.id,np);
 }
@@ -242,6 +245,15 @@ function applyClientHit(p,kind,id){
 }
 function toastAll(m){ toast(m); bcast({t:'ts',m}); }
 function damageE(e,dmg,owner,quiet){
+  // Friendly fire is blocked HERE, at the one choke point every damage
+  // source funnels through — bullets, booms, beams, chain lightning,
+  // orbiting fangs, sabers, drones, zones and poison ticks all land in
+  // this function. Checking at the call sites instead missed eight of
+  // them, which is how a player could melt their own nexus.
+  if(owner!==undefined&&e.team!==undefined){
+    const src=S.players.get(owner);
+    if(src&&!hostile(src.team,e.team))return;
+  }
   if(e.shielded)dmg*=BAL.combat.shieldedDmgFrac; // multi-part boss: core barely scratched while any part still lives
   e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit');}
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
@@ -316,13 +328,15 @@ function startPick(p,keepDeadline){
   // invincibility + weapon-pause only lasts 10s, not the whole decision window —
   // player keeps moving and the rest of the battle keeps running around them
   p.pickInvUntil=now()+10000;
+  if(p.bot){ botPick(p); return; }   // a bot must never hold the pick window open
   if(p.id===myId) showPickUI(p.pickOpts.map(optView),p.pickUntil,ownedView(p));
   else sendTo(p.id,{t:'pk',opts:p.pickOpts.map(optView),dl:p.pickUntil,own:ownedView(p)});
 }
 function resolvePick(p,i){
   if(!p.pickOpts)return;
-  applyOpt(p,p.pickOpts[clamp(i,0,2)]);
+  applyOpt(p,p.pickOpts[clamp(i,0,p.pickOpts.length-1)]);
   p.pickOpts=null; p.pickUntil=0;
+  if(p.bot)return;
   if(p.id===myId)hidePickUI(); else sendTo(p.id,{t:'pkend'});
 }
 function discardWeapon(p,i){ // full discard, upgrades lost; only during pick window
@@ -425,8 +439,17 @@ function hostUpdate(dt){
         if(def.drone&&S.dr.filter(d2=>d2.owner===p.id).length>=CB.drones.maxPerPlayer)continue;
         let tg=null;
         if(def.needT){let bd=1e9;
-          for(const e of S.en){const d=(e.x-p.x)**2+(e.y-p.y)**2;
+          for(const e of S.en){ if(!hostile(p.team,e.team))continue; // don't lock onto your own base
+            const d=(e.x-p.x)**2+(e.y-p.y)**2;
             if(d<bd&&d<320*320){bd=d;tg=e;}}
+          // In PvP modes hostile PLAYERS are valid targets too. Without this
+          // an aimed weapon can only ever lock onto an S.en entity, so you
+          // simply cannot shoot at an enemy player — you just hit whatever
+          // creep happens to be nearby.
+          if(S.pvp)for(const q of S.players.values()){
+            if(q===p||q.dead||!hostile(p.team,q.team))continue;
+            const d=(q.x-p.x)**2+(q.y-p.y)**2;
+            if(d<bd&&d<320*320){bd=d;tg=q;}}
           if(!tg)continue;}
         w.cd=def.cd(w)*p.st.cdM;
         if(def.rt==='t'&&!(p.tFreeChance>0&&Math.random()<p.tFreeChance)){
@@ -514,7 +537,9 @@ function hostUpdate(dt){
   // player bullets
   for(const b of S.pb){
     if(b.home){ let bt=null,bd=1e9;
-      for(const e of S.en){const d=(e.x-b.x)**2+(e.y-b.y)**2;if(d<bd){bd=d;bt=e;}}
+      const homeOwner=S.players.get(b.owner);
+      for(const e of S.en){ if(homeOwner&&!hostile(homeOwner.team,e.team))continue; // homing must not chase allies
+        const d=(e.x-b.x)**2+(e.y-b.y)**2;if(d<bd){bd=d;bt=e;}}
       if(bt){const ta=Math.atan2(bt.y-b.y,bt.x-b.x),ca=Math.atan2(b.vy,b.vx);
         let da=ta-ca; while(da>Math.PI)da-=TAU; while(da<-Math.PI)da+=TAU;
         const na=ca+clamp(da,-4.2*dt,4.2*dt),sp=Math.hypot(b.vx,b.vy)*1.01;
@@ -545,6 +570,17 @@ function hostUpdate(dt){
         if(b.slow)e.slowT=1.2;
         if(b.pois){e.poisT=3;e.poisD=Math.max(e.poisD||0,b.pois);e.poisBy=b.owner;}
         if(b.pierce>0)b.pierce--;else b.dead=true;}}
+    // PvP against the HOST's own player. Remote players detect hits on
+    // themselves and report them, but nobody does that on the host's
+    // behalf — in Battleground the host is headless so it never mattered,
+    // but in a siege the host is a player and was simply bulletproof.
+    if(!b.dead&&S.pvp&&b.owner!==myId){
+      const hp2=S.players.get(myId);
+      if(hp2&&!hp2.dead&&hostile(bTeam,hp2.team)&&Math.hypot(b.x-hp2.x,b.y-hp2.y)<3+hp2.r){
+        b.dead=true;
+        hurt(hp2,b.dmg*((S.moba?MOBA.pvpDamageMult:0)||(BAL.battleground&&BAL.battleground.pvpDamageMult)||1));
+      }
+    }
     if(b.ttl<=0||bulletHitsObstacle(b))b.dead=true;
     if(b.dead&&b.boom&&!b.boomed){b.boomed=1;boom(b.x,b.y,b.boom,b.boomDmg,b.owner);}
   }

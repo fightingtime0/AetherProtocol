@@ -191,6 +191,22 @@
     }
   },
 
+  {
+    "id": "creep", "ai": "creep",
+    "hp": 70, "spd": 34, "r": 3, "score": 8, "shards": 1,
+    "sprite": {
+      "pal": { "1": "#8f9ac2", "2": "#4ef0e8", "3": "#39415f", "4": "#141a2e" },
+      "rows": [".22.", "3113", "1111", "3113", ".33."]
+    }
+  },
+  {
+    "id": "creepr", "ai": "creep", "ranged": true,
+    "hp": 52, "spd": 30, "r": 3, "score": 10, "shards": 1,
+    "sprite": {
+      "pal": { "1": "#8f9ac2", "2": "#ffd35c", "3": "#39415f", "4": "#141a2e" },
+      "rows": ["..2..", ".323.", "31113", "31113", ".3.3."]
+    }
+  },
   { "_comment": "MOBA structures — no \"pool\" key, so they never enter wave spawns; placed only by moba.js",
     "id": "nexus", "ai": "nexus", "boss": true, "bossName": "NEXUS CORE", "scale": 3,
     "hp": 4000, "spd": 0, "r": 18, "score": 0, "shards": 0,
@@ -201,6 +217,7 @@
   },
   {
     "id": "basebss", "ai": "guardian", "boss": true, "bossName": "BASE GUARDIAN", "scale": 2,
+    "meleeDash": true,
     "hp": 1800, "spd": 26, "r": 10, "score": 300, "shards": 25,
     "sprite": {
       "pal": { "1": "#39415f", "2": "#4ef0e8", "3": "#8f9ac2", "4": "#ffd35c", "5": "#0b0e1a" },

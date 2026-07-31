@@ -273,6 +273,19 @@ function renderDiffChips(rowId,descId,onChange){
   $(descId).textContent=DIFF().desc;
 }
 
+/* Bots occupy a normal lobby slot, so they flow through newMobaSim(),
+   the roster broadcast and the snapshot with no special handling. */
+function addBot(team){
+  const id=pidNext();
+  lobby.players.push({id,name:'BOT-'+id,sprite:save.sprite,meta:{},
+    cls:CLASSES[irnd(0,CLASSES.length)].id,team,bot:true});
+  updatePeerList(); bcastRoster(); renderTeamUI(lobby.players);
+}
+function clearBots(){
+  lobby.players=lobby.players.filter(p=>!p.bot);
+  updatePeerList(); bcastRoster(); renderTeamUI(lobby.players);
+}
+
 /* ---------------- Nexus Siege lobby ----------------
    Mode is host-owned: only the host sees the mode chips, and clients
    learn it from the roster broadcast. Team is per-player — everyone
@@ -310,8 +323,20 @@ function renderTeamUI(players){
     };
     el.appendChild(b);
   });
+  if(role==='host'){ // bots are host-side only; clients just see them in the roster
+    [0,1].forEach(t=>{
+      const b=document.createElement('button');
+      b.className='chip'; b.textContent='+ BOT '+teamName(t); b.style.opacity=.85;
+      b.onclick=()=>addBot(t);
+      el.appendChild(b);
+    });
+    const c=document.createElement('button');
+    c.className='chip'; c.textContent='CLEAR BOTS';
+    c.onclick=()=>clearBots();
+    el.appendChild(c);
+  }
   const list=players||lobby.players||[];
-  const side=t=>list.filter(p=>(p.team||0)===t).map(p=>p.name).join(', ')||'—';
+  const side=t=>list.filter(p=>(p.team||0)===t).map(p=>p.name+(p.bot?' (bot)':'')).join(', ')||'—';
   $('teamRoster').innerHTML=
     '<span style="color:'+teamColor(0)+'">'+teamName(0)+':</span> '+side(0)+
     ' &nbsp;·&nbsp; <span style="color:'+teamColor(1)+'">'+teamName(1)+':</span> '+side(1);

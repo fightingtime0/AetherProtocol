@@ -126,6 +126,22 @@ function enemyAct(e,dt){
          S.fx.push({x:e2.x,y:e2.y,vx:0,vy:-18,l:.3,ci:'#7cff6b'}); } }
      if(e.cd<=0){ e.cd=1.8; ebul(e.x,e.y,aim,62,2); }
      break;
+   case 'creep':{ const C=MOBA.creep;
+     // March down the lane toward the enemy nexus; break off to fight
+     // anything hostile that comes close (player, creep or structure),
+     // then resume once it is gone. `p` is whatever nearestFoe() chose.
+     const ranged=!!ET[ETI[e.k]].ranged;
+     if(d<C.aggroRadius){
+       const stop=ranged?C.attackRange:C.meleeRange;
+       if(d>stop)mv(dx/d,dy/d);
+       if(ranged){ if(e.cd<=0){ e.cd=C.shotInterval; ebul(e.x,e.y,aim,C.bulletSpeed,2,1.5,e.team); } }
+       else if(d<=C.meleeRange+2&&e.cd<=0){ // melee creeps jab at point blank
+         e.cd=C.shotInterval*.6; ebul(e.x,e.y,aim,120,3,1.5,e.team); }
+     }else{
+       const gx=e.goalX-e.x, gy=e.goalY-e.y, gd=Math.hypot(gx,gy)||1;
+       e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt;
+     }
+     break; }
    /* ---- MOBA structures (see moba.js) ----
       All three are team-owned and fire team-tagged bolts, so they can
       never damage their own side. `p` here is whatever nearestFoe()
@@ -139,19 +155,33 @@ function enemyAct(e,dt){
        ebul(e.x,e.y,aim,T.bulletSpeed,2,1.5,e.team); }
      break; }
    case 'guardian':{ const G=MOBA.baseboss;
-     // patrols a ring around its post, but breaks off to chase anything
-     // hostile that comes inside the leash radius
-     const hd=Math.hypot(e.homeX-e.x,e.homeY-e.y)||1;
-     if(hd>G.leashRadius*1.6){ // dragged too far from its post — walk back
-       e.x+=(e.homeX-e.x)/hd*e.spd*dt; e.y+=(e.homeY-e.y)/hd*e.spd*dt;
-     }else if(d<G.leashRadius){ if(d>50)mv(dx/d,dy/d); } // intruder inside the base — chase
-     else{ // otherwise orbit the post; always runs, including from a standing start
-       e.ph+=dt*G.patrolSpeed;
-       const tx=e.homeX+Math.cos(e.ph)*G.patrolRadius, ty=e.homeY+Math.sin(e.ph)*G.patrolRadius;
-       const ddx=tx-e.x, ddy=ty-e.y, dd=Math.hypot(ddx,ddy)||1;
-       e.x+=ddx/dd*e.spd*sm*dt; e.y+=ddy/dd*e.spd*sm*dt;
+     // Shoots continuously AND periodically telegraphs a lunge.
+     // st: 0 idle (patrol/chase) · 1 windup · 2 charging · 3 recovery.
+     // Contact damage while charging comes from the shared meleeDash path,
+     // exactly like the other charging enemies (see contactDamage).
+     e.tpT-=dt;
+     if(e.st===1){ e.flash=.05; e.stT-=dt; if(e.stT<=0){ e.st=2; e.stT=G.chargeTime; } }
+     else if(e.st===2){ const ox=e.x, oy=e.y;
+       e.x+=Math.cos(e.ang)*G.chargeSpeed*sm*dt; e.y+=Math.sin(e.ang)*G.chargeSpeed*sm*dt;
+       e.stT-=dt;
+       const hitObs=obstacles.some(o=>Math.hypot(o.x-e.x,o.y-e.y)<o.r+e.r);
+       if(e.stT<=0||hitObs||e.x<8||e.x>WW-8||e.y<8||e.y>WH-8){
+         e.st=3; e.stT=.6; e.tpT=G.chargeCooldown; if(hitObs){e.x=ox;e.y=oy;} } }
+     else if(e.st===3){ e.stT-=dt; if(e.stT<=0)e.st=0; }
+     else{
+       const hd=Math.hypot(e.homeX-e.x,e.homeY-e.y)||1;
+       if(hd>G.leashRadius*1.6){ // dragged too far from its post — walk back
+         e.x+=(e.homeX-e.x)/hd*e.spd*dt; e.y+=(e.homeY-e.y)/hd*e.spd*dt;
+       }else if(d<G.leashRadius){ if(d>50)mv(dx/d,dy/d); } // intruder inside the base — chase
+       else{ // otherwise orbit the post; runs from a standing start too
+         e.ph+=dt*G.patrolSpeed;
+         const tx=e.homeX+Math.cos(e.ph)*G.patrolRadius, ty=e.homeY+Math.sin(e.ph)*G.patrolRadius;
+         const ddx=tx-e.x, ddy=ty-e.y, dd=Math.hypot(ddx,ddy)||1;
+         e.x+=ddx/dd*e.spd*sm*dt; e.y+=ddy/dd*e.spd*sm*dt;
+       }
+       if(d<G.chargeRange&&e.tpT<=0){ e.st=1; e.stT=G.chargeWindup; e.ang=aim; }
      }
-     if(d<G.range&&e.cd<=0){ e.cd=G.shotInterval;
+     if(e.st!==2&&d<G.range&&e.cd<=0){ e.cd=G.shotInterval;  // keeps firing unless mid-lunge
        for(let i=-2;i<=2;i++)ebul(e.x,e.y,aim+i*.14,74,3,1.5,e.team); }
      break; }
    /* ---- bosses ---- */

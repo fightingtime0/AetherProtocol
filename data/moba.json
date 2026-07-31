@@ -25,7 +25,12 @@
     "patrolSpeed": 0.55,
     "leashRadius": 320,
     "shotInterval": 1.4,
-    "range": 300
+    "range": 300,
+    "chargeRange": 240,
+    "chargeWindup": 0.6,
+    "chargeTime": 0.9,
+    "chargeSpeed": 250,
+    "chargeCooldown": 4.5
   },
   "turret": {
     "shotInterval": 0.85,
@@ -33,9 +38,31 @@
     "bulletSpeed": 90
   },
 
+  "bot": {
+    "engageRadius": 340,
+    "standoffRange": 150,
+    "retreatRange": 300,
+    "retreatHpFrac": 0.35,
+    "speedFrac": 0.9
+  },
+
   "teamNames": ["AZURE", "CRIMSON"],
   "teamColors": ["#4ef0e8", "#ff4fd8"],
 
+  "creep": {
+    "meleePerWave": 3,
+    "rangedPerWave": 2,
+    "extraPerWaves": 4,
+    "maxAlivePerTeam": 26,
+    "aggroRadius": 210,
+    "attackRange": 150,
+    "meleeRange": 22,
+    "shotInterval": 1.6,
+    "bulletSpeed": 78,
+    "hpPerWave": 0.12
+  },
+
   "creepInterval": 30,
-  "respawnDelay": 6
+  "respawnDelay": 10,
+  "pvpDamageMult": 1.0
 }

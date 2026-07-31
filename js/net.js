@@ -186,7 +186,14 @@ function applySnap(s){
     p.shield=shd||0;p.shieldMax=shdMax||0;
     p.beamAng=(bAng||0)/100;p.beamLen=bLen||0;
     p.team=(tm===undefined||tm<0)?undefined:tm;
-    if(id===myId){myPos.spd=spd;myPos.dcd=dcd/100;myPos.dead=!!p.dead;}}
+    if(id===myId){
+      const wasDead=myPos.dead;
+      myPos.spd=spd;myPos.dcd=dcd/100;myPos.dead=!!p.dead;
+      // the host just respawned us (siege base / Battleground). The client
+      // is normally authoritative over its own position, so without this it
+      // would immediately report its old spot and undo the relocation.
+      if(wasDead&&!myPos.dead){ myPos.x=x; myPos.y=y; }
+    }}
   for(const id of [...V.players.keys()]) if(!seenP.has(id))V.players.delete(id);
   const seenE=new Set();
   for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd,tm]=a; seenE.add(id);

@@ -67,14 +67,17 @@ function genMobaWorld(){
   return obs;
 }
 
-/* A structure is a normal S.en entity — it reuses damageE(), the bullet
+/* A team entity is a normal S.en entity — it reuses damageE(), the bullet
    collision loops, the snapshot and the renderer. Only its AI is new. */
-function mkStruct(kind,team,x,y){
+function mkTeamEnt(kind,team,x,y,hpMul){
   const e=mkE(kind);          // stats/sprite/radius straight from enemies.json
-  e.x=x; e.y=y; e.team=team; e.struct=true;
-  e.hp=e.maxhp=ET[ETI[kind]].hp;  // structures ignore wave/difficulty scaling
+  e.x=x; e.y=y; e.team=team;
+  e.hp=e.maxhp=ET[ETI[kind]].hp*(hpMul||1); // ignores wave/difficulty scaling
   e.homeX=x; e.homeY=y; e.ph=rnd(0,TAU); e.cd=rnd(.2,1.0);
   return e;
+}
+function mkStruct(kind,team,x,y){
+  const e=mkTeamEnt(kind,team,x,y); e.struct=true; return e;
 }
 function mobaSpawnStructures(){
   const P=MOBA.positions, laneY=WH/2;
@@ -104,17 +107,29 @@ function newMobaSim(playersInfo){
      moba:true, mobaOver:0, creepT:MOBA.creepInterval};
   playersInfo.forEach(pi=>{
     const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
-    applyMetaObj(p, pi.id===myId?save.meta:pi.meta);
+    applyMetaObj(p, (pi.id===myId&&!pi.bot)?save.meta:pi.meta);
     p.team=(pi.team===1)?1:0;
+    p.bot=!!pi.bot;
     const sp=mobaSpawn(p.team); p.x=sp.x; p.y=sp.y;
     S.players.set(pi.id,p);
   });
   mobaSpawnStructures();
 }
-/* Respawn at your own base rather than a random spot. */
+/* Respawn at your own base rather than a random spot.
+   respawnPersistent() REPLACES the object in S.players, so the position
+   has to be written to the new one — writing to `p` silently updated a
+   discarded object and left players respawning in random corners. */
 function mobaRespawn(p){
+  const team=p.team||0;
   respawnPersistent(p);
-  const sp=mobaSpawn(p.team||0); p.x=sp.x; p.y=sp.y;
+  const np=S.players.get(p.id)||p;
+  np.team=team;
+  const sp=mobaSpawn(team);
+  np.x=sp.x; np.y=sp.y;
+  // hostUpdate() copies myPos over the local player every tick, so without
+  // this the host would be yanked straight back to where it died
+  if(np.id===myId){ myPos.x=np.x; myPos.y=np.y; myPos.dead=false; }
+  return np;
 }
 function mobaNexus(team){ return S.en.find(e=>e.k==='nexus'&&e.team===team&&e.hp>0); }
 
@@ -143,8 +158,81 @@ function mobaUpdate(dt){
       return;
     }
   }
-  // STAGE 3 will drive creep waves from here:
-  //   S.creepT-=dt; if(S.creepT<=0){S.creepT=MOBA.creepInterval; spawnCreepWave();}
+  // creep waves
+  S.creepT-=dt;
+  if(S.creepT<=0){ S.creepT=MOBA.creepInterval; spawnCreepWave(); }
+  // bots think here; their weapons already auto-fire with everyone else's
+  for(const p of S.players.values()) if(p.bot)botUpdate(p,dt);
+}
+
+/* ---------------- creeps ---------------- */
+function spawnCreepWave(){
+  const C=MOBA.creep;
+  S.creepWave=(S.creepWave||0)+1;
+  // waves get slightly larger and tougher the longer the match runs, so a
+  // stalemate eventually breaks instead of grinding forever
+  const extra=Math.floor(S.creepWave/C.extraPerWaves);
+  const hpMul=1+S.creepWave*C.hpPerWave;
+  for(let team=0;team<2;team++){
+    const alive=S.en.filter(e=>e.team===team&&!e.struct).length;
+    if(alive>=C.maxAlivePerTeam)continue;   // keep entity counts (and snapshots) bounded
+    const sp=mobaSpawn(team);
+    const goalX=team===0?WW*(1-MOBA.positions.nexus):WW*MOBA.positions.nexus;
+    const add=(kind,n)=>{ for(let i=0;i<n;i++){
+      const e=mkTeamEnt(kind,team,sp.x+rnd(-24,24),sp.y+rnd(-40,40),hpMul);
+      e.goalX=goalX; e.goalY=WH/2;
+      S.en.push(e); } };
+    add('creep',C.meleePerWave+extra);
+    add('creepr',C.rangedPerWave+extra);
+  }
+  sfxE('boss');
+  toastAll('Creep wave '+S.creepWave+' marching out');
+}
+
+/* ---------------- bots ----------------
+   A bot IS an ordinary player object: it lives in S.players, so weapons
+   auto-fire, stats, upgrades, shields, death and respawn all work with
+   no special-casing. The only thing it needs is somewhere to walk. */
+function botUpdate(p,dt){
+  if(p.dead)return;
+  const enemyNexusX=p.team===0?WW*(1-MOBA.positions.nexus):WW*MOBA.positions.nexus;
+  // nearest hostile thing worth approaching
+  let tgt=null,bd=1e9;
+  for(const o of S.en){ if(o.hp<=0||!hostile(p.team,o.team))continue;
+    const d=(o.x-p.x)**2+(o.y-p.y)**2; if(d<bd){bd=d;tgt=o;} }
+  for(const q of S.players.values()){ if(q===p||q.dead||!hostile(p.team,q.team))continue;
+    const d=(q.x-p.x)**2+(q.y-p.y)**2; if(d<bd){bd=d;tgt=q;} }
+  const B=MOBA.bot;
+  const dist=Math.sqrt(bd);
+  let tx,ty;
+  if(tgt&&dist<B.engageRadius){
+    // hold at weapon range rather than walking into melee; retreat when hurt
+    const hurtBadly=p.hp<p.maxhp*B.retreatHpFrac;
+    const want=hurtBadly?B.retreatRange:B.standoffRange;
+    const ang=Math.atan2(p.y-tgt.y,p.x-tgt.x);
+    tx=tgt.x+Math.cos(ang)*want; ty=tgt.y+Math.sin(ang)*want;
+  }else{ // nothing near — push the lane
+    tx=enemyNexusX; ty=WH/2+Math.sin((now()/1000+p.id)*.5)*60;
+  }
+  const dx=tx-p.x, dy=ty-p.y, d=Math.hypot(dx,dy);
+  if(d>4){ const sp=p.st.spd*B.speedFrac;
+    p.x=clamp(p.x+dx/d*sp*dt,6,WW-6);
+    p.y=clamp(p.y+dy/d*sp*dt,6,WH-6);
+    collideObstacles(p);
+  }
+}
+/* Bots resolve their own upgrade picks immediately — a bot must never
+   block the pick window. Weapon upgrades first (always safe), then plain
+   stat passives; never the T-charge specials or Glass Reactor. */
+function botPick(p){
+  const opts=p.pickOpts||[];
+  let best=-1;
+  for(let i=0;i<opts.length;i++){ const o=opts[i];
+    if(o.t==='up'){ best=i; break; }                       // upgrading a held weapon: always fine
+    if(o.t==='pas'&&botSafePassive(o.ps)&&best<0)best=i;
+    if(o.t==='new'&&best<0)best=i;
+  }
+  resolvePick(p,best<0?0:best);
 }
 function mobaEnd(winner){
   S.over=true;
