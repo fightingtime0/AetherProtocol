@@ -134,7 +134,7 @@ function snap(){
   const pl=[]; for(const p of S.players.values())
     pl.push([p.id,Math.round(p.x),Math.round(p.y),Math.round(p.hp),p.maxhp,
       (p.inv>0?1:0)|(p.dead?2:0)|(now()<p.pickUntil?4:0)|(p.tLock?8:0)|(p.beamOnT>0?16:0),
-      Math.round(p.st.spd),Math.round(p.st.dashCd*100),p.shards,
+      Math.round(effSpeed(p)),Math.round(p.st.dashCd*100),p.shards,
       Math.round(p.t/p.tMax*100),
       p.orbN||0,p.sabN||0,
       Math.round(p.shield),Math.round(p.shieldMax),
@@ -145,10 +145,10 @@ function snap(){
     Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0,
     e.team===undefined?-1:e.team,
     e.laserOn?Math.round((e.lang||0)*100):0,e.laserOn?Math.round(e.llen||0):0]);
-  const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
+  const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r,b.team===undefined?-1:b.team]);
   const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
-  const dr=S.dr.map(d2=>[Math.round(d2.x),Math.round(d2.y),Math.round(d2.hp/d2.maxhp*100),d2.stuck?1:0,d2.fuse||0]);
+  const dr=S.dr.map(d2=>[Math.round(d2.x),Math.round(d2.y),Math.round(d2.hp/d2.maxhp*100),d2.stuck?1:0,d2.fuse||0,d2.team===undefined?-1:d2.team]);
   const mk=S.mk.map(m=>[Math.round(m.x),Math.round(m.y),Math.round(m.r),Math.round(m.r0),
     Math.round(m.t*100),Math.round(m.tMax*100)]);
   const ar=S.ar.map(a2=>[Math.round(a2.x1),Math.round(a2.y1),Math.round(a2.x2),Math.round(a2.y2)]);

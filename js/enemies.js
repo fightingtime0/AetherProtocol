@@ -68,7 +68,16 @@ function hitTarget(t,dmg,srcId,dot){
    hostile along the line; lang/llen ride the snapshot so clients draw it. */
 function structLaser(e,tgt,dt,cfg){
   const d=Math.hypot(tgt.x-e.x,tgt.y-e.y)||1;
-  if(!cfg.laserDps||d>cfg.laserRange){ e.laserOn=0; e.llen=0; return; }
+  if(!cfg.laserDps||d>cfg.laserRange){
+    e.laserOn=0; e.llen=0; e.laserTgt=undefined; e.laserHeat=0; return; }
+  /* The beam winds up: it opens weak and bites harder the longer it stays
+     locked on one target, and resets the moment it switches or breaks off.
+     That makes stepping out of the beam meaningful instead of a flat tax. */
+  const R=MOBA.laserRamp;
+  const tid=(tgt.weapons?'p':tgt.drone?'d':'e')+(tgt.id!==undefined?tgt.id:'?');
+  if(e.laserTgt!==tid){ e.laserTgt=tid; e.laserHeat=0; }
+  e.laserHeat=Math.min(1,(e.laserHeat||0)+dt/R.time);
+  const heat=R.from+(R.to-R.from)*e.laserHeat;
   const aim=Math.atan2(tgt.y-e.y,tgt.x-e.x);
   e.lang=aim; e.llen=Math.min(d,cfg.laserRange); e.laserOn=1;
   const lx=Math.cos(aim), ly=Math.sin(aim), w=cfg.laserWidth||4;
@@ -79,7 +88,7 @@ function structLaser(e,tgt,dt,cfg){
   };
   const span=dotReady(e,dt);   // shared DoT cadence — see dotReady()
   if(!span)return;
-  const amt=cfg.laserDps*span;
+  const amt=cfg.laserDps*heat*span;
   for(const q of S.players.values()){
     if(q.dead||!hostile(e.team,q.team))continue;
     if(q.id!==myId&&!q.bot)continue;             // remote humans self-report

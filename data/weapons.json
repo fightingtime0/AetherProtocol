@@ -287,15 +287,15 @@
     "type": "zone",
     "resource": "t",
     "cost": 14,
-    "desc": "Gravity well \u00b7 {radius}px, damage ramps 1 \u2192 {dps} over its life",
+    "desc": "Gravity well \u00b7 {radius}px, slows and ramps 1 \u2192 {dps} dmg/s",
     "cd": {
       "base": 2.3,
       "perLvl": 0.1,
       "min": 1.4
     },
     "dmg": {
-      "base": 20,
-      "flat": 4
+      "base": 12,
+      "flat": 2.5
     },
     "radius": {
       "base": 15.5,

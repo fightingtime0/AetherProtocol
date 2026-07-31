@@ -241,6 +241,14 @@ function dotReady(holder,dt){
   const span=holder.dotT; holder.dotT=0;
   return span;                       // seconds of damage to release now
 }
+/* A player's CURRENT movement speed, including any drag from standing in a
+   gravity well. Everything that needs to know how fast someone actually
+   moves goes through here — the snapshot, and the host's own myPos — so a
+   slow can't be applied in one place and forgotten in another. */
+function effSpeed(p){
+  const Z=BAL.combat.zoneSlow;
+  return p.st.spd*((p.slowT>0&&Z)?Z.mult:1);
+}
 const NO_FOES=[];
 function foePlayers(src){
   if(!S.pvp||!src)return NO_FOES;
@@ -322,7 +330,7 @@ function applyClientHit(p,kind,id){
     if(!e)return;
     const melee=ET[ETI[e.k]].meleeDash&&e.st===2;
     const CD=CB.contactDamage;
-    hurt(p,e.boss?CD.boss:melee?CD.meleeDash:e.mini?CD.mini:CD.base);
+    hurt(p,melee?(e.chargeDmg||CD.meleeDash):e.boss?CD.boss:e.mini?CD.mini:CD.base);
   }else if(kind==='p'){ // Battleground PvP: another player's bullet touched me
     if(!S.pvp)return;
     const b=S.pb.find(b2=>b2.id===id&&!b2.dead&&b2.owner!==p.id);
@@ -475,12 +483,16 @@ function hostUpdate(dt){
   // local player position
   const me=S.players.get(myId);
   if(me&&!me.dead){ me.x=myPos.x; me.y=myPos.y;
+    // keep the host's own movement speed live: it was captured once at run
+    // start, so speed upgrades (and now gravity-well drag) never reached it
+    myPos.spd=effSpeed(me); myPos.dcd=me.st.dashCd;
     if(myPos.inv>0)me.inv=Math.max(me.inv,.1); }
   for(const p of S.players.values()){
     if(S.persistent&&p.dead&&p.respawnAt&&now()>=p.respawnAt){
       if(S.moba)mobaRespawn(p); else respawnPersistent(p); continue; }
     p.inv=Math.max(0,p.inv-dt);
     p.surgeT=Math.max(0,p.surgeT-dt);
+    p.slowT=Math.max(0,(p.slowT||0)-dt);   // gravity-well drag decays
     // co-op support auras from nearby allies
     let aR=0,aD=0;
     for(const q of S.players.values()){ if(q===p||q.dead)continue;
@@ -675,6 +687,19 @@ function hostUpdate(dt){
     // ramp: 1 dps at the moment it lands, climbing to z.dps by the end
     const age=Math.max(0,(z.dur||3)-z.ttl), k=clamp(age/(z.dur||3),0,1);
     z.cur=1+(Math.max(1,z.dps)-1)*k;
+    // drag: everything inside the well is slowed while it stands in it
+    const Z=BAL.combat.zoneSlow;
+    for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
+      e.slowT=Math.max(e.slowT||0,Z.linger);
+    // Players are only mired in modes where players are enemies, and never
+    // the caster or their own side — otherwise your own well is a trap you
+    // walk into, and in co-op it would drag your teammates down.
+    if(S.pvp)for(const q of S.players.values()){
+      if(q.dead||q.id===z.owner)continue;
+      const src=S.players.get(z.owner);
+      if(src&&!hostile(src.team,q.team))continue;
+      if(Math.hypot(q.x-z.x,q.y-z.y)<z.r+q.r) q.slowT=Math.max(q.slowT||0,Z.linger);
+    }
     const span=dotReady(z,dt);
     if(span){
       for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
@@ -703,7 +728,9 @@ function hostUpdate(dt){
       if(d<e.r+p.r+1){
         const melee=ET[ETI[e.k]].meleeDash&&e.st===2;
         const CD=CB.contactDamage;
-        hurt(p,e.boss?CD.boss:melee?CD.meleeDash:e.mini?CD.mini:CD.base);
+        // a telegraphed charge hits far harder than a bump; siege units
+        // override the global with their own number
+        hurt(p,melee?(e.chargeDmg||CD.meleeDash):e.boss?CD.boss:e.mini?CD.mini:CD.base,undefined);
       } } }
   // player bullets
   for(const b of S.pb){
@@ -764,6 +791,30 @@ function hostUpdate(dt){
     if(b.dead&&b.chain&&!b.chained){b.chained=1;chainBurst(b);} // arc where the bolt stopped
     if(b.dead&&b.boom&&!b.boomed){b.boomed=1;boom(b.x,b.y,b.boom,b.boomDmg,b.owner);
       if(b.orb)sfxE('orbPop');}
+  }
+  S.pb=S.pb.filter(b=>!b.dead);
+  /* Saber parry vs PLAYER bullets. The blades already swat enemy bolts;
+     in PvP they must also cut down incoming fire from hostile players,
+     otherwise the defensive half of the weapon simply doesn't exist
+     against the people you're actually fighting. */
+  if(S.pvp)for(const b of S.pb){
+    if(b.dead||b.orb)continue;                       // your own fangs aren't incoming fire
+    const shooter=S.players.get(b.owner);
+    for(const p of S.players.values()){
+      if(p.dead||!p.sabN||p.id===b.owner)continue;
+      if(shooter&&!hostile(shooter.team,p.team))continue;
+      const dd=Math.hypot(b.x-p.x,b.y-p.y);
+      if(dd<=CB.saber.deflectMin||dd>=CB.saber.reach)continue;
+      const ba=Math.atan2(b.y-p.y,b.x-p.x);
+      for(let i=0;i<p.sabN;i++){ let da=ba-(p.sabA+i/p.sabN*TAU);
+        da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
+        if(Math.abs(da)<CB.saber.deflectArc){
+          b.dead=true; sfxE('deflect',b.x,b.y);
+          p.sabCharge=Math.min(CB.saber.maxDeflectBonus,(p.sabCharge||0)+CB.saber.deflectBonus);
+          S.fx.push({x:b.x,y:b.y,vx:rnd(-30,30),vy:rnd(-30,30),l:.2,ci:'#7cff6b'});
+          break; } }
+      if(b.dead)break;
+    }
   }
   S.pb=S.pb.filter(b=>!b.dead);
   // enemy bullets

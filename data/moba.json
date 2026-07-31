@@ -31,7 +31,8 @@
     "chargeTime": 0.85,
     "chargeSpeed": 235,
     "chargeCooldown": 5.0,
-    "dropRadius": 340
+    "dropRadius": 340,
+    "chargeDamage": 55
   },
   "nexus": {
     "auraRadius": 300,
@@ -58,7 +59,8 @@
     "damage": 34,
     "laserRange": 260,
     "laserWidth": 4,
-    "laserDps": 24
+    "laserDps": 24,
+    "chargeDamage": 70
   },
   "turret": {
     "shotInterval": 0.7,
@@ -121,5 +123,10 @@
     "chestCooldown": 30,
     "mercHpMul": 1.9,
     "mercCount": 2
+  },
+  "laserRamp": {
+    "time": 2.2,
+    "from": 0.35,
+    "to": 1.75
   }
 }

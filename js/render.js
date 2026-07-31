@@ -141,35 +141,61 @@ function render(){
      than a per-weapon flag, so it needs no protocol change and every fast
      weapon (rail, boomerang, erratic…) gets a trail automatically. */
   const TR=BAL.combat.trail;
-  function streak(bx,by,vx,vy,col){
+  function streak(bx,by,vx,vy,col,wide){
     const sp=Math.hypot(vx,vy);
     if(sp<TR.minSpeed)return;
     const len=Math.min(TR.maxLen,sp*TR.scale), ux=vx/sp, uy=vy/sp;
-    ctx.globalAlpha=.35; ctx.strokeStyle=col; ctx.lineWidth=1;
+    ctx.globalAlpha=wide?.5:.35; ctx.strokeStyle=col; ctx.lineWidth=wide?2:1;
     ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx-ux*len,by-uy*len); ctx.stroke();
-    ctx.globalAlpha=1;
+    ctx.globalAlpha=1; ctx.lineWidth=1;
+  }
+  /* In team modes a bullet's COLOUR tells you whose side it belongs to, so
+     the weapon it came from has to be readable some other way. The colour
+     index becomes a SHAPE instead: square, diamond, round, bar, cross,
+     hollow. Outside a team mode the old palettes are used unchanged. */
+  function bulletMark(bx,by,ci,col,r,ang){
+    ctx.fillStyle=col; ctx.strokeStyle=col;
+    const x=Math.round(bx), y=Math.round(by), s=Math.max(1,r);
+    switch(ci%6){
+      case 0: ctx.fillRect(x-s,y-s,s*2,s*2); break;                       // block
+      case 1: ctx.save(); ctx.translate(x,y); ctx.rotate(Math.PI/4);       // diamond
+              ctx.fillRect(-s,-s,s*2,s*2); ctx.restore(); break;
+      case 2: ctx.beginPath(); ctx.arc(x,y,s+.4,0,TAU); ctx.fill(); break; // orb
+      case 3: ctx.save(); ctx.translate(x,y); ctx.rotate(ang||0);          // bar
+              ctx.fillRect(-s*1.8,-s*.6,s*3.6,s*1.2); ctx.restore(); break;
+      case 4: ctx.fillRect(x-s*1.8,y-.5,s*3.6,1);                          // cross
+              ctx.fillRect(x-.5,y-s*1.8,1,s*3.6); break;
+      default: ctx.lineWidth=1; ctx.beginPath();                            // hollow ring
+              ctx.arc(x,y,s+.6,0,TAU); ctx.stroke(); break;
+    }
   }
   // enemy bullets
   const bt=bulletLead(); // latency-compensated; identical to checkLocalHits()
   for(const b of eb){
-    let bx,by,ci,br,bvx,bvy;
-    if(isHost){bx=b.x;by=b.y;ci=b.ci;br=b.r;bvx=b.vx;bvy=b.vy;}
-    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];br=b[6];bvx=b[3];bvy=b[4];}
-    if(!vis(bx,by,4))continue;
-    const col=EBCOLS[ci]||'#fff';
+    let bx,by,ci,br,bvx,bvy,btm;
+    if(isHost){bx=b.x;by=b.y;ci=b.ci;br=b.r;bvx=b.vx;bvy=b.vy;btm=b.team;}
+    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];br=b[6];bvx=b[3];bvy=b[4];
+      btm=(b[7]===undefined||b[7]<0)?undefined:b[7];}
+    if(!vis(bx,by,5))continue;
+    const teamed=(btm!==undefined&&btm>=0);
+    const col=teamed?teamColor(btm):(EBCOLS[ci]||'#fff');
     streak(bx,by,bvx,bvy,col);
-    ctx.fillStyle=col;
-    ctx.fillRect(Math.round(bx-br),Math.round(by-br),br*2,br*2);
+    if(teamed)bulletMark(bx,by,ci,col,br,Math.atan2(bvy,bvx));
+    else ctx.fillStyle=col,ctx.fillRect(Math.round(bx-br),Math.round(by-br),br*2,br*2);
     ctx.fillStyle='rgba(255,255,255,.85)';ctx.fillRect(Math.round(bx),Math.round(by),1,1);
   }
   // player bullets
   for(const b of pb){
-    let bx,by,ci,bvx,bvy;
-    if(isHost){bx=b.x;by=b.y;ci=b.ci;bvx=b.orb?0:b.vx;bvy=b.orb?0:b.vy;}
-    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];bvx=b[3];bvy=b[4];}
+    let bx,by,ci,bvx,bvy,own;
+    if(isHost){bx=b.x;by=b.y;ci=b.ci;bvx=b.orb?0:b.vx;bvy=b.orb?0:b.vy;own=b.owner;}
+    else{bx=b[1]+b[3]*bt;by=b[2]+b[4]*bt;ci=b[5];bvx=b[3];bvy=b[4];own=b[6];}
     if(!vis(bx,by,5))continue;
-    const col=PB_COLS[ci]||'#ffd35c';
-    streak(bx,by,bvx,bvy,col);
+    // owner's team decides the colour; the shape still says which weapon
+    const shooter=isHost?S.players.get(own):(V&&V.players.get(own));
+    const ptm=shooter?shooter.team:undefined;
+    const teamed=(ptm!==undefined&&ptm>=0);
+    const col=teamed?teamColor(ptm):(PB_COLS[ci]||'#ffd35c');
+    streak(bx,by,bvx,bvy,col,teamed);
     // summoned fangs read as spinning blades rather than bullets
     if(isHost&&b.orb){
       ctx.globalAlpha=.9; ctx.strokeStyle=col; ctx.lineWidth=1;
@@ -180,8 +206,8 @@ function render(){
       ctx.stroke(); ctx.globalAlpha=1;
       continue;
     }
-    ctx.fillStyle=col;
-    ctx.fillRect(Math.round(bx-1),Math.round(by-1),3,2);
+    if(teamed)bulletMark(bx,by,ci,col,1.5,Math.atan2(bvy,bvx));
+    else{ ctx.fillStyle=col; ctx.fillRect(Math.round(bx-1),Math.round(by-1),3,2); }
   }
   // chain-lightning arcs — shows exactly what got zapped, and in what order
   const arcs=isHost?(S.ar||[]):(V&&V.ar||[]);
@@ -264,12 +290,19 @@ function render(){
     const hpp=isHost?dn.hp/dn.maxhp:(dn[2]||0)/100;
     const stuck=isHost?dn.stuck:!!dn[3];
     const fuse=isHost?(dn.fuse||0):(dn[4]||0);
+    const dtm=isHost?dn.team:((dn[5]===undefined||dn[5]<0)?undefined:dn[5]);
     if(!vis(dxx,dyy,10))continue;
     // tethered out of range: dimmed, ringed, and counting down to detonation
     if(stuck){ ctx.globalAlpha=.5;
       ctx.strokeStyle='#ff5c47'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(dxx,dyy,6,0,TAU);ctx.stroke(); }
     drawImgC(SPRC.drone.c,dxx,dyy,0);
+    // servitors wear their owner's colours too, so you can tell whose swarm
+    // is whose in a scrap
+    if(dtm!==undefined&&dtm>=0){
+      ctx.globalAlpha=.75; ctx.strokeStyle=teamColor(dtm); ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(dxx,dyy,4.5,0,TAU);ctx.stroke();
+    }
     ctx.globalAlpha=1;
     if(stuck&&fuse>0){
       ctx.font='bold 8px monospace'; ctx.textAlign='center';

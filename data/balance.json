@@ -58,7 +58,8 @@
       "tickInterval": 0.55,
       "energyPerHit": 2.5,
       "deflectBonus": 3.5,
-      "maxDeflectBonus": 28
+      "maxDeflectBonus": 28,
+      "bulletParry": true
     },
     "drones": {
       "maxPerPlayer": 2,
@@ -78,7 +79,7 @@
     },
     "contactDamage": {
       "boss": 24,
-      "meleeDash": 16,
+      "meleeDash": 44,
       "mini": 18,
       "base": 11
     },
@@ -94,6 +95,10 @@
       "full": 70,
       "silent": 420,
       "minVol": 0.12
+    },
+    "zoneSlow": {
+      "mult": 0.55,
+      "linger": 0.35
     }
   },
   "waves": {

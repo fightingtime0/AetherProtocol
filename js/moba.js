@@ -75,11 +75,19 @@ function mkTeamEnt(kind,team,x,y,hpMul){
   const e=mkE(kind);          // stats/sprite/radius straight from enemies.json
   e.x=x; e.y=y; e.team=team;
   e.hp=e.maxhp=ET[ETI[kind]].hp*(hpMul||1); // ignores wave/difficulty scaling
+  const cd=mobaChargeDmg(kind); if(cd)e.chargeDmg=cd;
   e.homeX=x; e.homeY=y; e.ph=rnd(0,TAU); e.cd=rnd(.2,1.0);
   return e;
 }
 function mkStruct(kind,team,x,y){
   const e=mkTeamEnt(kind,team,x,y); e.struct=true; return e;
+}
+/* per-unit charge damage, so a guardian's lunge hurts far more than a
+   generic melee bump without inflating every charging enemy in the game */
+function mobaChargeDmg(kind){
+  if(kind==='basebss')return MOBA.baseboss.chargeDamage;
+  if(kind==='siegelord')return MOBA.siegeLord.chargeDamage;
+  return 0;
 }
 function mobaSpawnStructures(){
   const P=MOBA.positions, laneY=WH/2;
