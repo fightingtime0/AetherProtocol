@@ -7,7 +7,7 @@
     "dashDuration": 0.22,
     "dashInvuln": 0.28,
     "dashSpeedMult": 3.1,
-    "t": { "start": 36, "rechargeRate": 34, "genRate": 7 },
+    "t": { "start": 36, "rechargeRate": 34, "genRate": 7, "min": 6, "maxLockSec": 12 },
     "pickupRadius": 7,
     "minMaxHp": 40,
     "reviveHpFrac": 0.6,

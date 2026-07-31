@@ -54,13 +54,15 @@ function genMobaWorld(){
   WW=MOBA.world.w; WH=MOBA.world.h;
   const obs=[];
   const laneY=WH/2, half=MOBA.laneHalfHeight;
-  // Cover is kept OUT of the lane corridor and out of both bases, so
-  // structures always have line of sight and pushes stay readable.
+  // Cover hugs the lane edges: dense enough to fight around, but the
+  // corridor itself and both bases stay clear so structures keep line of
+  // sight and a push reads cleanly.
   for(let i=0;i<MOBA.obstacles;i++){
-    for(let tries=0;tries<12;tries++){
-      const x=rnd(WW*0.22,WW*0.78), y=rnd(20,WH-20);
-      if(Math.abs(y-laneY)<half*0.55)continue; // keep the lane itself clear
+    for(let tries=0;tries<14;tries++){
+      const x=rnd(WW*0.15,WW*0.85), y=rnd(14,WH-14);
+      if(Math.abs(y-laneY)<half*0.45)continue; // keep the lane itself walkable
       const r=rnd(MOBA.obstacleRadius[0],MOBA.obstacleRadius[1]);
+      if(obs.some(o=>Math.hypot(o.x-x,o.y-y)<o.r+r+6))continue; // no fused blobs
       obs.push({x,y,r}); break;
     }
   }

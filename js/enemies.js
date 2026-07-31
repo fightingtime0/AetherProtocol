@@ -34,6 +34,46 @@ function mkBoss(k,w,np){
   e.hp=e.maxhp=ET[ETI[k]].hp*(1+w*BAL.waves.bossHpPerWave)*(0.6+np*0.4)*DIFF().enemyHp;
   return e;
 }
+/* ---- MOBA structure helpers ----
+   Structures shoot CREEPS first and only switch to players once the lane
+   is clear. That is what makes advancing behind a wave work: without it a
+   turret ignores the wave and deletes whoever walks in first. */
+function structFoe(e,range){
+  let best=null,bd=range*range;
+  for(const o of S.en){
+    if(o===e||o.hp<=0||o.struct||!hostile(e.team,o.team))continue;
+    const d=(o.x-e.x)**2+(o.y-e.y)**2; if(d<bd){bd=d;best=o;}
+  }
+  if(best)return best;                      // creeps take priority
+  for(const q of S.players.values()){
+    if(q.dead||!hostile(e.team,q.team))continue;
+    const d=(q.x-e.x)**2+(q.y-e.y)**2; if(d<bd){bd=d;best=q;}
+  }
+  return best;
+}
+/* Continuous lance shared by nexus / turret / guardian. Burns everything
+   hostile along the line; lang/llen ride the snapshot so clients draw it. */
+function structLaser(e,tgt,dt,cfg){
+  const d=Math.hypot(tgt.x-e.x,tgt.y-e.y)||1;
+  if(!cfg.laserDps||d>cfg.laserRange){ e.laserOn=0; e.llen=0; return; }
+  const aim=Math.atan2(tgt.y-e.y,tgt.x-e.x);
+  e.lang=aim; e.llen=Math.min(d,cfg.laserRange); e.laserOn=1;
+  const lx=Math.cos(aim), ly=Math.sin(aim), w=cfg.laserWidth||4;
+  const bite=o=>{
+    const ex=o.x-e.x, ey=o.y-e.y, proj=ex*lx+ey*ly;
+    if(proj<0||proj>cfg.laserRange+o.r)return false;
+    return Math.abs(ex*ly-ey*lx)<w+o.r;
+  };
+  for(const q of S.players.values()){
+    if(q.dead||!hostile(e.team,q.team))continue;
+    if(q.id!==myId&&!q.bot)continue;             // remote humans self-report
+    if(bite(q))hurt(q,cfg.laserDps*dt,undefined,true); // dot: grants no i-frames
+  }
+  for(const o of S.en){
+    if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
+    if(bite(o))damageE(o,cfg.laserDps*dt,undefined,true);
+  }
+}
 function nearestPlayer(e){
   let bp=null,bd=1e9;
   for(const p of S.players.values()){ if(p.dead)continue;
@@ -147,32 +187,20 @@ function enemyAct(e,dt){
       never damage their own side. `p` here is whatever nearestFoe()
       picked — a hostile player, creep or structure. */
    case 'nexus':{ const N=MOBA.nexus;
-     // continuous lance: locks the nearest foe and burns it every tick.
-     // lang/llen ride the snapshot so clients can draw the same beam.
-     if(d<N.laserRange){
-       e.lang=aim; e.llen=Math.min(d,N.laserRange); e.laserOn=1;
-       const lx=Math.cos(aim), ly=Math.sin(aim);
-       const bite=(t2)=>{ // anything hostile lying along the beam line
-         const ex=t2.x-e.x, ey=t2.y-e.y, proj=ex*lx+ey*ly;
-         if(proj<0||proj>N.laserRange+t2.r)return false;
-         return Math.abs(ex*ly-ey*lx)<N.laserWidth+t2.r;
-       };
-       for(const q of S.players.values()){
-         if(q.dead||!hostile(e.team,q.team))continue;
-         if(q.id!==myId&&!q.bot)continue;           // remote humans self-report
-         if(bite(q))hurt(q,N.laserDps*dt);
-       }
-       for(const o of S.en){
-         if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
-         if(bite(o))damageE(o,N.laserDps*dt,undefined,true);
-       }
-     }else{ e.laserOn=0; e.llen=0; }
-     if(d<N.range&&e.cd<=0){ e.cd=N.shotInterval;
-       for(let i=-1;i<=1;i++)ebul(e.x,e.y,aim+i*.18,70,4,2,e.team,N.shotDamage); }
+     const tg=structFoe(e,Math.max(N.range,N.laserRange));
+     if(!tg){ e.laserOn=0; e.llen=0; break; }
+     structLaser(e,tg,dt,N);
+     const ta=Math.atan2(tg.y-e.y,tg.x-e.x), td=Math.hypot(tg.x-e.x,tg.y-e.y);
+     if(td<N.range&&e.cd<=0){ e.cd=N.shotInterval;
+       for(let i=-1;i<=1;i++)ebul(e.x,e.y,ta+i*.18,70,4,2,e.team,N.shotDamage); }
      break; }
    case 'laneturret':{ const T=MOBA.turret;
-     if(d<T.range&&e.cd<=0){ e.cd=T.shotInterval;
-       ebul(e.x,e.y,aim,T.bulletSpeed,2,2,e.team,T.damage); }
+     const tg=structFoe(e,Math.max(T.range,T.laserRange||0));
+     if(!tg){ e.laserOn=0; e.llen=0; break; }
+     structLaser(e,tg,dt,T);
+     const ta=Math.atan2(tg.y-e.y,tg.x-e.x), td=Math.hypot(tg.x-e.x,tg.y-e.y);
+     if(td<T.range&&e.cd<=0){ e.cd=T.shotInterval;
+       ebul(e.x,e.y,ta,T.bulletSpeed,2,2,e.team,T.damage); }
      break; }
    case 'guardian':{ const G=MOBA.baseboss;
      // Shoots continuously AND periodically telegraphs a lunge.
@@ -201,8 +229,13 @@ function enemyAct(e,dt){
        }
        if(d<G.chargeRange&&e.tpT<=0){ e.st=1; e.stT=G.chargeWindup; e.ang=aim; }
      }
-     if(e.st!==2&&d<G.range&&e.cd<=0){ e.cd=G.shotInterval;  // keeps firing unless mid-lunge
-       for(let i=-2;i<=2;i++)ebul(e.x,e.y,aim+i*.14,74,3,1.5,e.team); }
+     // guardians also use creep-first targeting for their gun and lance
+     const gt=structFoe(e,Math.max(G.range,G.laserRange||0));
+     if(gt&&e.st!==2)structLaser(e,gt,dt,G); else { e.laserOn=0; e.llen=0; }
+     if(gt&&e.st!==2&&e.cd<=0){                             // keeps firing unless mid-lunge
+       const ga=Math.atan2(gt.y-e.y,gt.x-e.x), gd=Math.hypot(gt.x-e.x,gt.y-e.y);
+       if(gd<G.range){ e.cd=G.shotInterval;
+         for(let i=-2;i<=2;i++)ebul(e.x,e.y,ga+i*.14,74,3,1.5,e.team,G.damage); } }
      break; }
    /* ---- bosses ---- */
    case 'herald':

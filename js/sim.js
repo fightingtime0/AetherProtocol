@@ -213,27 +213,35 @@ function foePlayers(src){
   return out;
 }
 function foePlayersOf(ownerId){ return foePlayers(S.players.get(ownerId)); }
-function hurtPlayersAt(x,y,r,dmg,ownerId){
+function hurtPlayersAt(x,y,r,dmg,ownerId,dot){
   for(const q of foePlayersOf(ownerId))
-    if(Math.hypot(q.x-x,q.y-y)<r+q.r) hurt(q,dmg,ownerId);
+    if(Math.hypot(q.x-x,q.y-y)<r+q.r) hurt(q,dmg,ownerId,dot);
 }
-/* srcId lets a kill be credited for XP — see grantXp()/mobaOnPlayerKill(). */
-function hurt(p,amt,srcId){
+/* srcId lets a kill be credited for XP — see grantXp()/mobaOnPlayerKill().
+   dot marks CONTINUOUS damage (lasers, beams, zones, blade sweeps, drone
+   contact). Those tick every frame, and a normal hit grants 0.9s of
+   i-frames — so without this flag standing in a laser re-armed invulner-
+   ability every tick and left the victim immune to everything. A DoT is
+   still BLOCKED by existing i-frames (a dash should save you); it just
+   never grants new ones. */
+function hurt(p,amt,srcId,dot){
   if(p.inv>0||p.dead||now()<p.pickInvUntil)return;
   if(srcId!==undefined&&srcId!==p.id)p.lastHitBy=srcId;
   amt=Math.round(amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1));   // difficulty + glass-cannon scaling
   amt=Math.max(1,amt-(p.armor||0));              // armor: flat reduction per hit
   p.shieldCd=BAL.player.shield.regenDelay;       // any hit delays shield regen
-  p.inv=.9; if(p.id===myId)S.shake=.28;
+  if(!dot){ p.inv=.9; if(p.id===myId)S.shake=.28; } // continuous damage grants no i-frames
   if(S.obj&&!S.obj.done&&S.obj.ty==='notouch')objDone(-1);
   if(p.shield>0){                                // shield soaks before HP
     const abs=Math.min(p.shield,amt); p.shield-=abs; amt-=abs;
-    for(let i=0;i<6;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-45,45),vy:rnd(-45,45),l:.3,ci:'#4ef0e8'});
+    if(!dot||Math.random()<.15)                  // DoT ticks every frame — don't flood the fx buffer
+      for(let i=0;i<6;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-45,45),vy:rnd(-45,45),l:.3,ci:'#4ef0e8'});
     sfxE('shield');
     if(amt<=0)return;
   }
   p.hp-=amt; sfxE('hurt');
-  for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
+  if(!dot||Math.random()<.15)
+    for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
   if(p.hp<=0){ p.hp=0; p.dead=true; sfxE('down');
     const killer=S.players.get(p.lastHitBy);
     if(S.moba&&killer&&killer!==p) mobaOnPlayerKill(killer,p);
@@ -429,17 +437,34 @@ function hostUpdate(dt){
     // Flux Generator swaps that for constant trickle regen (see SPECIAL_PASSIVES).
     // Overclocked Cell (also there) keeps the lock but adds a fast recharge
     // multiplier + a passive leak that drains charge even while idle.
-    if(p.tLeak>0) p.t=Math.max(0,p.t-p.tLeak*dt);
+    /* DEADLOCK GUARD. The lock only releases when charge reaches tMax, so
+       any drain that outpaces the recharge strands a player at zero charge
+       and they can never fire again. Three ways that happened:
+         · Redline Cell's leak (tLeak) kept draining while locked
+         · Kinetic Battery bled charge while standing still, also locked
+         · relics stacking tMax down to <=0 made `p.t<=0` permanently true
+       So: drains are suspended while locked (recharge is then strictly
+       monotonic), tMax can never fall below a floor, and a watchdog breaks
+       any lock that somehow still outlives its worst-case duration. */
+    const TMIN=PB.t.min||6, TMAXLOCK=PB.t.maxLockSec||12;
+    if(!(p.tMax>=TMIN))p.tMax=TMIN;
+    if(!(p.t>=0))p.t=0;                       // NaN guard
+    if(p.tLeak>0&&!p.tLock) p.t=Math.max(0,p.t-p.tLeak*dt);
     if(p.tGenerator){
       p.t=Math.min(p.tMax,p.t+PB.t.genRate*p.st.tRchM*dt); p.tLock=false;
     }else if(p.tLock){
       const rchMult=p.tOverclock?4:1;
-      p.t+=PB.t.rechargeRate*rchMult*p.st.tRchM*dt;
+      p.t+=Math.max(PB.t.rechargeRate*rchMult*p.st.tRchM,TMIN*.25)*dt; // always makes progress
       if(p.t>=p.tMax){p.t=p.tMax;p.tLock=false;}
     }
+    if(p.tLock){
+      p.tLockT=(p.tLockT||0)+dt;
+      if(p.tLockT>TMAXLOCK){ p.t=p.tMax; p.tLock=false; p.tLockT=0;
+        if(p.id===myId)toast('⚡ Charge cell reset'); }
+    }else p.tLockT=0;
     p.beamOnT=Math.max(0,(p.beamOnT||0)-dt);
     // Kinetic Battery: charge builds while you're moving, bleeds while you camp
-    if(p.tMoveRegen>0){
+    if(p.tMoveRegen>0&&!p.tLock){ // never bleed while locked — see the deadlock guard above
       const moved=Math.hypot(p.x-(p.prevX??p.x),p.y-(p.prevY??p.y));
       p.t=moved>0.15?Math.min(p.tMax,p.t+p.tMoveRegen*dt):Math.max(0,p.t-p.tMoveRegen*.4*dt);
     }
@@ -519,7 +544,7 @@ function hostUpdate(dt){
         const ea=Math.atan2(q.y-p.y,q.x-p.x);
         for(let i=0;i<n;i++){ let da=ea-(p.orbA+i/n*TAU);
           da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.orbit.arc){ hurt(q,orbDmg(p,w)*dt*CB.orbit.tickMult*p.dmgBoost,p.id); break; } } } }
+          if(Math.abs(da)<CB.orbit.arc){ hurt(q,orbDmg(p,w)*dt*CB.orbit.tickMult*p.dmgBoost,p.id,true); break; } } } }
     // saber sweep
     for(const w of p.weapons){ if(!WPN[w.id].passiveSaber)continue;
       const n=sabCountW(w);
@@ -537,13 +562,15 @@ function hostUpdate(dt){
         const ea=Math.atan2(q.y-p.y,q.x-p.x);
         for(let i=0;i<n;i++){ let da=ea-(p.sabA+i/n*TAU);
           da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.saber.arc){ hurt(q,dmg*dt*CB.saber.tickMult,p.id); break; } } } }
+          if(Math.abs(da)<CB.saber.arc){ hurt(q,dmg*dt*CB.saber.tickMult,p.id,true); break; } } } }
   }
   // servitor drones: seek & ram foes, soak enemy fire
   const DR=CB.drones;
   for(const dn of S.dr){
     let tg=null,bd=1e9;
+    const dOwner=S.players.get(dn.owner);
     for(const e of S.en){ if(e.hp<=0)continue;
+      if(dOwner&&!hostile(dOwner.team,e.team))continue; // servitors ignored team and chased friendly creeps
       const dd=(e.x-dn.x)**2+(e.y-dn.y)**2; if(dd<bd){bd=dd;tg=e;} }
     if(tg){ const a=Math.atan2(tg.y-dn.y,tg.x-dn.x);
       dn.x+=Math.cos(a)*DR.speed*dt; dn.y+=Math.sin(a)*DR.speed*dt; }
@@ -554,11 +581,12 @@ function hostUpdate(dt){
     collideObstacles(dn);
     dn.hitCd=Math.max(0,dn.hitCd-dt);
     for(const e of S.en){ if(e.hp<=0)continue;
+      if(dOwner&&!hostile(dOwner.team,e.team))continue;
       if(Math.hypot(e.x-dn.x,e.y-dn.y)<e.r+3){
         damageE(e,dn.dmg*dt*DR.contactTick,dn.owner);
         if(dn.hitCd<=0){dn.hitCd=DR.clawCooldown;dn.hp-=DR.clawDamage;} } }
     // PvP: servitors ram hostile players too
-    hurtPlayersAt(dn.x,dn.y,3,dn.dmg*dt*DR.contactTick,dn.owner);
+    hurtPlayersAt(dn.x,dn.y,3,dn.dmg*dt*DR.contactTick,dn.owner,true);
     if(dn.hp<=0)for(let i=0;i<8;i++)S.fx.push({x:dn.x,y:dn.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.35,ci:'#4ef0e8'});
   }
   S.dr=S.dr.filter(d2=>d2.hp>0);
@@ -566,7 +594,7 @@ function hostUpdate(dt){
   for(const z of S.zn){ z.ttl-=dt;
     for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
       damageE(e,z.dps*dt,z.owner,true);
-    hurtPlayersAt(z.x,z.y,z.r,z.dps*dt,z.owner); // PvP: sigils burn players standing in them
+    hurtPlayersAt(z.x,z.y,z.r,z.dps*dt,z.owner,true); // PvP: sigils burn players standing in them
     if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:'#b34fff'});
   }
   S.zn=S.zn.filter(z=>z.ttl>0);

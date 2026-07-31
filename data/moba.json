@@ -1,10 +1,10 @@
 {
   "_comment": "NEXUS SIEGE (MOBA mode). Lane runs left-to-right; team 0 holds the left base, team 1 the right. Structure x positions are fractions of world width for team 0 and are mirrored (1-f) for team 1.",
 
-  "world": { "w": 5400, "h": 1100 },
-  "obstacles": 40,
-  "obstacleRadius": [8, 18],
-  "laneHalfHeight": 190,
+  "world": { "w": 5400, "h": 620 },
+  "obstacles": 110,
+  "obstacleRadius": [6, 15],
+  "laneHalfHeight": 150,
 
   "positions": {
     "spawn":    0.035,
@@ -19,10 +19,10 @@
     "auraRegen": 2.0,
     "shotInterval": 1.1,
     "range": 340,
-    "shotDamage": 14,
-    "laserRange": 300,
-    "laserWidth": 4,
-    "laserDps": 26
+    "shotDamage": 42,
+    "laserRange": 320,
+    "laserWidth": 5,
+    "laserDps": 95
   },
   "baseboss": {
     "patrolRadius": 150,
@@ -34,13 +34,20 @@
     "chargeWindup": 0.6,
     "chargeTime": 0.9,
     "chargeSpeed": 250,
-    "chargeCooldown": 4.5
+    "chargeCooldown": 4.5,
+    "damage": 34,
+    "laserRange": 260,
+    "laserWidth": 4,
+    "laserDps": 70
   },
   "turret": {
     "shotInterval": 0.7,
     "range": 340,
     "bulletSpeed": 95,
-    "damage": 16
+    "damage": 38,
+    "laserRange": 300,
+    "laserWidth": 4,
+    "laserDps": 80
   },
 
   "xp": {

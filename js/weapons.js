@@ -108,7 +108,7 @@ const BEHAVIORS={
     for(const q of foePlayers(p)){
       const ex=q.x-p.x, ey=q.y-p.y, proj=ex*dx+ey*dy;
       if(proj<0||proj>range+q.r)continue;
-      if(Math.abs(ex*dy-ey*dx)<width+q.r) hurt(q,dmg,p.id); }
+      if(Math.abs(ex*dy-ey*dx)<width+q.r) hurt(q,dmg,p.id,true); } // continuous beam: no i-frames
     p.beamOnT=0.12; p.beamAng=a; p.beamLen=range;
     if(Math.random()<.6)S.fx.push({x:p.x+dx*rnd(10,range*.9),y:p.y+dy*rnd(10,range*.9),
       vx:rnd(-8,8),vy:rnd(-8,8),l:.12,ci:'#ff4fd8'});
