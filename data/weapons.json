@@ -287,7 +287,7 @@
     "type": "zone",
     "resource": "t",
     "cost": 14,
-    "desc": "Gravity well \u00b7 {radius}px, {dps} dmg/s for 3s",
+    "desc": "Gravity well \u00b7 {radius}px, damage ramps 1 \u2192 {dps} over its life",
     "cd": {
       "base": 2.3,
       "perLvl": 0.1,
@@ -302,7 +302,8 @@
       "flat": 1.5
     },
     "duration": 3,
-    "sfx": "wSigil"
+    "sfx": "wSigil",
+    "rampTo": 1.25
   },
   {
     "id": "bomb",
@@ -366,13 +367,13 @@
     "name": "Lance Beam",
     "type": "beam",
     "resource": "t",
-    "cost": 1.4,
-    "desc": "Continuous laser, {dmg} dmg/tick while charge lasts",
+    "cost": 6.2,
+    "desc": "Continuous laser, {dmg} dmg per tick while charge lasts",
     "cd": {
-      "base": 0.05
+      "base": 0.22
     },
     "dmg": {
-      "base": 2.6,
+      "base": 11.4,
       "perLvl": 0.08
     },
     "range": 220,

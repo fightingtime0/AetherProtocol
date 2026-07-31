@@ -9,6 +9,22 @@
    ============================================================ */
 let AC=null, sfxGain=null;
 const sfxLast={}, sfxBLast={};
+/* Positional attenuation. tone()/noise() multiply their own volume by this,
+   and sfx(name,x,y) sets it from the distance between the event and the
+   listener (your own player) before invoking the sound. Events with no
+   position — UI clicks, your own pickups — stay at full volume. */
+let sfxVolMul=1;
+function sfxDistMul(x,y){
+  if(x===undefined||y===undefined)return 1;
+  const F=(BAL&&BAL.combat&&BAL.combat.sfxFalloff)||{full:70,silent:420,minVol:.12};
+  const lx=(typeof myPos==='object'&&myPos)?myPos.x:0;
+  const ly=(typeof myPos==='object'&&myPos)?myPos.y:0;
+  const d=Math.hypot(x-lx,y-ly);
+  if(d<=F.full)return 1;
+  if(d>=F.silent)return 0;
+  const k=1-(d-F.full)/(F.silent-F.full);
+  return Math.max(F.minVol,k);
+}
 
 function audioInit(){
   if(AC)return;
@@ -32,7 +48,7 @@ function tone(o){ // {f0,f1,d,v,w,delay}
   osc.type=o.w||'square';
   osc.frequency.setValueAtTime(o.f0,t0);
   if(o.f1)osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.f1),t0+d);
-  g.gain.setValueAtTime(o.v||.12,t0);
+  g.gain.setValueAtTime((o.v||.12)*sfxVolMul,t0);
   g.gain.exponentialRampToValueAtTime(.0001,t0+d);
   osc.connect(g); g.connect(sfxGain);
   osc.start(t0); osc.stop(t0+d+.02);
@@ -49,7 +65,7 @@ function noise(o){ // {f0,f1,d,v,ft,delay} — filtered white noise
   f.frequency.setValueAtTime(o.f0||1200,t0);
   if(o.f1)f.frequency.exponentialRampToValueAtTime(Math.max(10,o.f1),t0+d);
   const g=AC.createGain();
-  g.gain.setValueAtTime(o.v||.1,t0);
+  g.gain.setValueAtTime((o.v||.1)*sfxVolMul,t0);
   g.gain.exponentialRampToValueAtTime(.0001,t0+d);
   src.connect(f); f.connect(g); g.connect(sfxGain);
   src.start(t0);
@@ -110,19 +126,28 @@ const SFX={
   buy:     {gap:250,f:()=>arp([523,659,880,1174],.06,.13,.08,'sine')},
   denied:  {gap:250,f:()=>tone({f0:220,f1:120,d:.16,v:.07,w:'square'})},
 };
-function sfx(n){
+/* x,y optional: when given the sound is attenuated by its distance from
+   the listener, so a fight across the map is audible but not deafening. */
+function sfx(n,x,y){
   const s=SFX[n]; if(!s||!AC||save.mute)return;
   const t=now();
   if(t-(sfxLast[n]||0)<(s.gap||0))return;
-  sfxLast[n]=t; s.f();
+  const mul=sfxDistMul(x,y);
+  if(mul<=0)return;                    // far enough away to skip entirely
+  sfxLast[n]=t;
+  sfxVolMul=mul;
+  try{ s.f(); } finally { sfxVolMul=1; }
 }
-/* host game event: local playback + queue for clients (throttled) */
-function sfxE(n){
+/* host game event: local playback + queue for clients (throttled).
+   Positioned events ride the snapshot as [name,x,y] so each client
+   attenuates against ITS OWN listener rather than the host's. */
+function sfxE(n,x,y){
   if(role==='client')return;
-  sfx(n);
+  sfx(n,x,y);
   if(S&&conns.length){
     const g=(SFX[n]&&SFX[n].gap)||0, t=now();
-    if(t-(sfxBLast[n]||0)>=g&&S.sx.length<10){ sfxBLast[n]=t; S.sx.push(n); }
+    if(t-(sfxBLast[n]||0)>=g&&S.sx.length<10){ sfxBLast[n]=t;
+      S.sx.push(x===undefined?n:[n,Math.round(x),Math.round(y)]); }
   }
 }
 /* ============================================================

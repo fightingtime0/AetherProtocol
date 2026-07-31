@@ -71,7 +71,10 @@
       "bulletDamage": 8,
       "maxRange": 170,
       "stuckDrag": 0.0,
-      "hp": 1
+      "hp": 1,
+      "stuckFuse": 3,
+      "selfBoomRadius": 18,
+      "selfBoomMult": 2.5
     },
     "contactDamage": {
       "boss": 24,
@@ -85,6 +88,12 @@
     "pylon": {
       "orbitR": 34,
       "orbitSpeed": 0.9
+    },
+    "dotTick": 0.22,
+    "sfxFalloff": {
+      "full": 70,
+      "silent": 420,
+      "minVol": 0.12
     }
   },
   "waves": {

@@ -120,10 +120,21 @@ function render(){
     ctx.globalAlpha=ocd>0?.15:.32;
     ctx.strokeStyle=teamColor(oteam); ctx.lineWidth=1;
     ctx.beginPath();ctx.arc(ox,oy,R,0,TAU);ctx.stroke();
-    ctx.globalAlpha=ocd>0?.25:.8;
-    ctx.font='bold 8px monospace'; ctx.textAlign='center';
+    ctx.globalAlpha=ocd>0?.25:.85;
+    ctx.textAlign='center';
+    ctx.font='bold 8px monospace';
     ctx.fillStyle=teamColor(oteam);
-    ctx.fillText(merc?'⚔':'▣',Math.round(ox),Math.round(oy)+3);
+    ctx.fillText(merc?'⚔':'▣',Math.round(ox),Math.round(oy)-1);
+    // spell out what the pad does and what it costs
+    ctx.font='bold 6px monospace';
+    const label=merc?'HIRE MERCS':'OPEN CACHE';
+    const cost=MOBA?(merc?MOBA.shop.creepCost:MOBA.shop.chestCost):0;
+    ctx.fillStyle='#000';
+    ctx.fillText(label,Math.round(ox)+1,Math.round(oy)+9);
+    ctx.fillStyle=ocd>0?'#8f9ac2':'#e8ecff';
+    ctx.fillText(label,Math.round(ox),Math.round(oy)+8);
+    ctx.fillStyle=ocd>0?'#8f9ac2':'#ffd35c';
+    ctx.fillText(ocd>0?('READY IN '+Math.ceil(ocd)+'s'):('◆ '+cost),Math.round(ox),Math.round(oy)+15);
     ctx.globalAlpha=1;
   }
   /* Velocity-aligned streak behind fast rounds. Derived from speed rather
@@ -238,7 +249,10 @@ function render(){
       ctx.beginPath();ctx.arc(ex,ey,10*scl+3,0,TAU);ctx.stroke(); ctx.globalAlpha=1;
     }
     const hpp=isHost?e.hp/e.maxhp:e.hpp/100;
-    if(hpp<1){const bw=(ET[ti].boss?26:ET[ti].mini?18:10)*Math.max(1,scl*.8);
+    // Objective structures always show their bar (you need to read a siege at
+    // a glance); everything else only shows one once it has been damaged.
+    const isObjective=(e.team!==undefined&&e.team>=0);
+    if(hpp<1||isObjective){const bw=(ET[ti].boss?26:ET[ti].mini?18:10)*Math.max(1,scl*.8);
       ctx.fillStyle='#060810';ctx.fillRect(Math.round(ex-bw/2),Math.round(ey-spr.h*scl/2-4),bw,2);
       ctx.fillStyle=(e.team!==undefined&&e.team>=0)?teamColor(e.team)
         :ET[ti].boss?'#ff4fd8':ET[ti].opt?'#4ef0e8':'#7cff6b';
@@ -249,14 +263,19 @@ function render(){
     const dxx=isHost?dn.x:dn[0], dyy=isHost?dn.y:dn[1];
     const hpp=isHost?dn.hp/dn.maxhp:(dn[2]||0)/100;
     const stuck=isHost?dn.stuck:!!dn[3];
-    if(!vis(dxx,dyy,8))continue;
-    // tethered out of range: dimmed with a broken-link ring so it's obvious
-    // why it stopped following
-    if(stuck){ ctx.globalAlpha=.45;
+    const fuse=isHost?(dn.fuse||0):(dn[4]||0);
+    if(!vis(dxx,dyy,10))continue;
+    // tethered out of range: dimmed, ringed, and counting down to detonation
+    if(stuck){ ctx.globalAlpha=.5;
       ctx.strokeStyle='#ff5c47'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(dxx,dyy,6,0,TAU);ctx.stroke(); }
     drawImgC(SPRC.drone.c,dxx,dyy,0);
     ctx.globalAlpha=1;
+    if(stuck&&fuse>0){
+      ctx.font='bold 8px monospace'; ctx.textAlign='center';
+      ctx.fillStyle='#000'; ctx.fillText(fuse,Math.round(dxx)+1,Math.round(dyy)-6);
+      ctx.fillStyle='#ff5c47'; ctx.fillText(fuse,Math.round(dxx),Math.round(dyy)-7);
+    }
     ctx.fillStyle='#060810';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),8,1);
     ctx.fillStyle='#4ef0e8';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),Math.round(8*clamp(hpp,0,1)),1);
   }
@@ -354,6 +373,12 @@ function drawMinimap(en,players,isHost){
 }
 
 /* ---------------- HUD ---------------- */
+/* host-side nexus integrity for the scoreboard */
+function nexusPct(team){
+  if(!S)return 0;
+  const n=S.en.find(e=>e.k==='nexus'&&e.team===team&&e.hp>0);
+  return n?Math.round(n.hp/n.maxhp*100):0;
+}
 function updateHUD(){
   let me=null,shards=0,wave=1,score=0;
   if(role!=='client'&&S){me=S.players.get(myId);wave=S.wave;score=S.score;shards=me?me.shards:0;}
@@ -379,6 +404,24 @@ function updateHUD(){
     $('hWave').textContent=lv;
   }else $('hWave').textContent=wave;
   $('hScore').textContent=score; $('hShards').textContent=shards;
+  // upgrade readout — what the picked cards add up to
+  const ups=myUpgrades||[];
+  $('hUpgrades').innerHTML=ups.length?ups.map(u=>'<span>'+u+'</span>').join(''):'';
+  // Nexus Siege scoreboard: kills + nexus integrity per side
+  const mb=(role!=='client')
+    ? (S&&S.moba?[nexusPct(0),nexusPct(1),S.mobaOver||0,(S.kills&&S.kills[0])||0,(S.kills&&S.kills[1])||0]:0)
+    : (V&&V.mb);
+  $('siegeBar').classList.toggle('hidden',!mb);
+  if(mb){
+    for(let t=0;t<2;t++){
+      $('sgName'+t).textContent=teamName(t);
+      $('sgName'+t).style.color=teamColor(t);
+      $('sgKills'+t).textContent=mb[3+t]||0;
+      const bar=$('sgBar'+t);
+      bar.style.width=clamp(mb[t],0,100)+'%';
+      bar.style.background=teamColor(t);
+    }
+  }
   // boss healthbar
   let bnm='',bhp=0,hasBoss=false;
   if(role!=='client'&&S){

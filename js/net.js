@@ -148,7 +148,7 @@ function snap(){
   const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
   const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
-  const dr=S.dr.map(d2=>[Math.round(d2.x),Math.round(d2.y),Math.round(d2.hp/d2.maxhp*100),d2.stuck?1:0]);
+  const dr=S.dr.map(d2=>[Math.round(d2.x),Math.round(d2.y),Math.round(d2.hp/d2.maxhp*100),d2.stuck?1:0,d2.fuse||0]);
   const mk=S.mk.map(m=>[Math.round(m.x),Math.round(m.y),Math.round(m.r),Math.round(m.r0),
     Math.round(m.t*100),Math.round(m.tMax*100)]);
   const ar=S.ar.map(a2=>[Math.round(a2.x1),Math.round(a2.y1),Math.round(a2.x2),Math.round(a2.y2)]);
@@ -161,7 +161,8 @@ function snap(){
   // Nexus Siege: both nexus HP bars + the winner, for the client HUD
   let mb=0;
   if(S.moba){ const n0=S.en.find(e=>e.k==='nexus'&&e.team===0), n1=S.en.find(e=>e.k==='nexus'&&e.team===1);
-    mb=[n0?Math.round(n0.hp/n0.maxhp*100):0, n1?Math.round(n1.hp/n1.maxhp*100):0, S.mobaOver||0]; }
+    mb=[n0?Math.round(n0.hp/n0.maxhp*100):0, n1?Math.round(n1.hp/n1.maxhp*100):0, S.mobaOver||0,
+        (S.kills&&S.kills[0])||0,(S.kills&&S.kills[1])||0]; }
   return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,mk,ar,shp,ob,sx,mb,pvp:S.pvp?1:0,ts:now()};
 }
 function bcast(m){ for(const c of conns){try{c.send(m)}catch(e){}} }
@@ -178,7 +179,7 @@ function applySnap(s){
   const raw=clamp(t-V.snapT,25,250);
   V.snapDt=V.snapT?V.snapDt*.7+raw*.3:80; V.snapT=t;
   V.wave=s.w; V.score=s.sc; V.pvp=!!s.pvp;
-  if(s.sx)for(const k of s.sx)sfx(k);
+  if(s.sx)for(const k of s.sx){ if(Array.isArray(k))sfx(k[0],k[1],k[2]); else sfx(k); }
   const seenP=new Set();
   for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm,lv,xp,xpN]=a; seenP.add(id);
     let p=V.players.get(id);
@@ -460,7 +461,7 @@ function clientOnData(c,d){
       netRtt=netRtt?netRtt*.8+r*.2:r; break; }     // EMA: one slow packet shouldn't jerk the lead
     case 'st': applySnap(d); break;
     case 'pk': showPickUI(d.opts,d.dl,d.own); break;
-    case 'pkend': hidePickUI(); break;
+    case 'pkend': hidePickUI(); if(d.ups)myUpgrades=d.ups; break;
     case 'ts': toast(d.m); break;
     case 'go': finishRun(d.wave,d.score,d.shards); break;
     case 'rs': obstacles=d.obstacles; if(d.ww){WW=d.ww;WH=d.wh;}

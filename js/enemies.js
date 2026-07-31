@@ -77,18 +77,21 @@ function structLaser(e,tgt,dt,cfg){
     if(proj<0||proj>cfg.laserRange+o.r)return false;
     return Math.abs(ex*ly-ey*lx)<w+o.r;
   };
+  const span=dotReady(e,dt);   // shared DoT cadence — see dotReady()
+  if(!span)return;
+  const amt=cfg.laserDps*span;
   for(const q of S.players.values()){
     if(q.dead||!hostile(e.team,q.team))continue;
     if(q.id!==myId&&!q.bot)continue;             // remote humans self-report
-    if(bite(q))hurt(q,cfg.laserDps*dt,undefined,true); // dot: grants no i-frames
+    if(bite(q))hurt(q,amt,undefined,true);       // dot: grants no i-frames
   }
   for(const o of S.en){
     if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
-    if(bite(o))damageE(o,cfg.laserDps*dt,undefined,true);
+    if(bite(o))damageE(o,amt,undefined,true);
   }
   for(const dn of S.dr){ // servitors burn in the beam like anything else
     if(dn.hp<=0||!hostile(e.team,dn.team))continue;
-    if(bite(dn))dn.hp-=cfg.laserDps*dt;
+    if(bite(dn))dn.hp-=amt;
   }
 }
 function nearestPlayer(e){

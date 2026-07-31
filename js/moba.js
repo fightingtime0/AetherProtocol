@@ -111,7 +111,7 @@ function newMobaSim(playersInfo){
      spawnQ:[],spawnT:0,waveDone:true,miniSpawned:true,over:false,shake:0,
      pvp:true,          // opposing players can shoot each other
      persistent:true,   // death respawns at base instead of ending the run
-     moba:true, mobaOver:0, creepT:MOBA.creepInterval};
+     moba:true, mobaOver:0, creepT:MOBA.creepInterval, kills:[0,0]};
   playersInfo.forEach(pi=>{
     const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
     applyMetaObj(p, (pi.id===myId&&!pi.bot)?save.meta:pi.meta);
@@ -202,6 +202,7 @@ function mobaXpForEntity(e){
   return Math.max(MOBA.xp.minUnit,Math.round((e.sc||0)*MOBA.xp.scoreToXp));
 }
 function mobaOnPlayerKill(killer,victim){
+  if(S.kills)S.kills[killer.team|0]=(S.kills[killer.team|0]||0)+1;
   grantXp(killer,MOBA.xp.playerKill);
   grantAssistXp(killer,MOBA.xp.playerKill,victim);
   killer.score=(killer.score||0)+1;

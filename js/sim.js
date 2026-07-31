@@ -40,6 +40,32 @@ function applyMetaObj(p,m){
   applyStats(p,CLS(p.cls).stats);                              // class after meta
   p.maxhp=Math.max(BAL.player.minMaxHp,p.maxhp);
   p.hp=p.maxhp; p.t=p.tMax; p.shield=p.shieldMax;
+  // Baseline for the upgrade readout: everything AFTER meta + class is what
+  // the player actually earned this run, which is what they want to see.
+  p.base={spd:p.st.spd,dmgM:p.st.dmgM,cdM:p.st.cdM,crit:p.st.crit,
+    regen:p.st.regen,greed:p.st.greed,bspdM:p.st.bspdM,dashCd:p.st.dashCd,
+    maxhp:p.maxhp,armor:p.armor||0,shieldMax:p.shieldMax||0,tMax:p.tMax};
+}
+/* Compact "what have my cards actually done" readout. Only non-zero deltas
+   are returned, each already formatted, so the HUD just prints them. */
+function statSummary(p){
+  if(!p||!p.base)return [];
+  const out=[], b=p.base, st=p.st;
+  const pct=(cur,base)=>Math.round((cur/base-1)*100);
+  const add=(glyph,txt)=>out.push(glyph+' '+txt);
+  if(b.dmgM&&pct(st.dmgM,b.dmgM)!==0)   add('☄','+'+pct(st.dmgM,b.dmgM)+'% dmg');
+  if(b.spd&&pct(st.spd,b.spd)!==0)      add('➤','+'+pct(st.spd,b.spd)+'% move');
+  if(b.cdM&&pct(b.cdM,st.cdM)!==0)      add('⚡','+'+pct(b.cdM,st.cdM)+'% rate'); // lower cdM = faster
+  if(b.bspdM&&pct(st.bspdM,b.bspdM)!==0)add('»','+'+pct(st.bspdM,b.bspdM)+'% velocity');
+  if(st.crit-b.crit>0.001)              add('✸','+'+Math.round((st.crit-b.crit)*100)+'% crit');
+  if(p.maxhp-b.maxhp!==0)               add('❤','+'+Math.round(p.maxhp-b.maxhp)+' hp');
+  if((p.armor||0)-b.armor>0)            add('▤','+'+Math.round((p.armor||0)-b.armor)+' armor');
+  if((p.shieldMax||0)-b.shieldMax>0)    add('⛨','+'+Math.round((p.shieldMax||0)-b.shieldMax)+' shield');
+  if(st.regen-b.regen>0.01)             add('✚','+'+(st.regen-b.regen).toFixed(1)+'/s regen');
+  if(b.dashCd&&pct(b.dashCd,st.dashCd)!==0) add('✧','+'+pct(b.dashCd,st.dashCd)+'% dash');
+  if(b.greed&&pct(st.greed,b.greed)!==0)add('◆','+'+pct(st.greed,b.greed)+'% shards');
+  if(p.tMax-b.tMax!==0)                 add('▣',(p.tMax-b.tMax>0?'+':'')+Math.round(p.tMax-b.tMax)+' charge');
+  return out;
 }
 // Battleground (persistent PvPvE) respawn: brand-new player object built the same
 // way a fresh join is (0 upgrades, base stats), not the old one patched in place —
@@ -202,6 +228,19 @@ function objDone(v){
    and reports it), but there is no client-side detection for an explosion
    or a beam — the receiving client never simulates them — so the host
    resolves those outright for everyone. */
+/* ---------------- damage-over-time cadence ----------------
+   Every DoT source used to apply a sliver of damage on every single
+   frame. That reads as mush, floods the fx buffer and makes tuning
+   opaque. They now accumulate and release on one shared interval, so
+   total dps is unchanged but the feedback lands in readable chunks.
+   `holder` is whatever owns the timer (a zone, a structure, a drone,
+   the firing player) so each source keeps its own cadence. */
+function dotReady(holder,dt){
+  holder.dotT=(holder.dotT||0)+dt;
+  if(holder.dotT<BAL.combat.dotTick)return 0;
+  const span=holder.dotT; holder.dotT=0;
+  return span;                       // seconds of damage to release now
+}
 const NO_FOES=[];
 function foePlayers(src){
   if(!S.pvp||!src)return NO_FOES;
@@ -251,7 +290,7 @@ function hurt(p,amt,srcId,dot){
     sfxE('shield');
     if(amt<=0)return;
   }
-  p.hp-=amt; sfxE('hurt');
+  p.hp-=amt; sfxE('hurt',p.x,p.y);
   if(!dot||Math.random()<.15)
     for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
   if(p.hp<=0){ p.hp=0; p.dead=true; sfxE('down');
@@ -306,9 +345,9 @@ function damageE(e,dmg,owner,quiet){
     if(src&&!hostile(src.team,e.team))return;
   }
   if(e.shielded)dmg*=BAL.combat.shieldedDmgFrac; // multi-part boss: core barely scratched while any part still lives
-  e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit');}
+  e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit',e.x,e.y);}
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
-    S.score+=e.sc; sfxE(e.boss?'bosskill':'kill');
+    S.score+=e.sc; sfxE(e.boss?'bosskill':'kill',e.x,e.y);
     const p=S.players.get(owner);
     if(S.moba&&p){ const xp=mobaXpForEntity(e);
       grantXp(p,xp);                 // siege upgrades are earned by killing
@@ -398,7 +437,10 @@ function resolvePick(p,i){
   applyOpt(p,p.pickOpts[clamp(i,0,p.pickOpts.length-1)]);
   p.pickOpts=null; p.pickUntil=0;
   if(p.bot)return;
-  if(p.id===myId)hidePickUI(); else sendTo(p.id,{t:'pkend'});
+  // push the refreshed stat readout to whoever owns this player
+  const sum=statSummary(p);
+  if(p.id===myId){ myUpgrades=sum; hidePickUI(); }
+  else sendTo(p.id,{t:'pkend',ups:sum});
 }
 function discardWeapon(p,i){ // full discard, upgrades lost; only during pick window
   if(!p.pickOpts||p.weapons.length<=1)return;
@@ -538,7 +580,7 @@ function hostUpdate(dt){
         const od=p.st.dmgM; p.st.dmgM=od*p.dmgBoost;
         def.fire(p,w,tg);
         p.st.dmgM=od;
-        sfxE(def.sfx||(def.rt==='t'?'shootT':'shoot')); // per-weapon voice
+        sfxE(def.sfx||(def.rt==='t'?'shootT':'shoot'),p.x,p.y); // per-weapon voice
       }
     }
     p.sabA=(p.sabA||0)+dt*CB.saber.spinSpeed;
@@ -581,8 +623,13 @@ function hostUpdate(dt){
   for(const dn of S.dr){
     let tg=null,bd=1e9;
     const dOwner=S.players.get(dn.owner);
+    // Only hunt inside the tether. Without this a servitor locks onto the
+    // nearest hostile ANYWHERE — on a siege map that's a structure across
+    // the field — walks itself out of range and suicides on repeat.
+    const reach=DR.maxRange*DR.maxRange;
     for(const e of S.en){ if(e.hp<=0)continue;
       if(dOwner&&!hostile(dOwner.team,e.team))continue; // servitors ignored team and chased friendly creeps
+      if(dOwner&&((e.x-dOwner.x)**2+(e.y-dOwner.y)**2)>reach)continue;
       const dd=(e.x-dn.x)**2+(e.y-dn.y)**2; if(dd<bd){bd=dd;tg=e;} }
     // Servitors are tethered: past maxRange from their owner they stop dead
     // rather than chasing across the map, and only move again once the owner
@@ -590,6 +637,16 @@ function hostUpdate(dt){
     const owner=S.players.get(dn.owner);
     const ownDist=owner?Math.hypot(owner.x-dn.x,owner.y-dn.y):1e9;
     dn.stuck=ownDist>DR.maxRange;
+    if(dn.stuck){
+      // out of tether: holds position and burns a 3-second fuse, then
+      // detonates. dn.fuse drives the countdown drawn over it.
+      dn.stuckT=(dn.stuckT||0)+dt;
+      dn.fuse=Math.max(0,Math.ceil((DR.stuckFuse||3)-dn.stuckT));
+      if(dn.stuckT>=(DR.stuckFuse||3)){
+        boom(dn.x,dn.y,DR.selfBoomRadius||16,dn.dmg*(DR.selfBoomMult||2),dn.owner,'#4ef0e8');
+        dn.hp=0;
+      }
+    }else{ dn.stuckT=0; dn.fuse=0; }
     if(dn.stuck){ /* tethered out — holds position */ }
     else if(tg){ const a=Math.atan2(tg.y-dn.y,tg.x-dn.x);
       dn.x+=Math.cos(a)*DR.speed*dt; dn.y+=Math.sin(a)*DR.speed*dt; }
@@ -599,21 +656,31 @@ function hostUpdate(dt){
         dn.x+=Math.cos(a)*DR.returnSpeed*dt; dn.y+=Math.sin(a)*DR.returnSpeed*dt; } }
     collideObstacles(dn);
     dn.hitCd=Math.max(0,dn.hitCd-dt);
-    for(const e of S.en){ if(e.hp<=0)continue;
-      if(dOwner&&!hostile(dOwner.team,e.team))continue;
-      if(Math.hypot(e.x-dn.x,e.y-dn.y)<e.r+3){
-        damageE(e,dn.dmg*dt*DR.contactTick,dn.owner);
-        if(dn.hitCd<=0){dn.hitCd=DR.clawCooldown;dn.hp-=DR.clawDamage;} } }
-    // PvP: servitors ram hostile players too
-    hurtPlayersAt(dn.x,dn.y,3,dn.dmg*dt*DR.contactTick,dn.owner,true);
+    const dspan=dotReady(dn,dt);   // shared DoT cadence
+    if(dspan){
+      const ram=dn.dmg*dspan*DR.contactTick;
+      for(const e of S.en){ if(e.hp<=0)continue;
+        if(dOwner&&!hostile(dOwner.team,e.team))continue;
+        if(Math.hypot(e.x-dn.x,e.y-dn.y)<e.r+3){
+          damageE(e,ram,dn.owner);
+          if(dn.hitCd<=0){dn.hitCd=DR.clawCooldown;dn.hp-=DR.clawDamage;} } }
+      // PvP: servitors ram hostile players too
+      hurtPlayersAt(dn.x,dn.y,3,ram,dn.owner,true);
+    }
     if(dn.hp<=0)for(let i=0;i<8;i++)S.fx.push({x:dn.x,y:dn.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.35,ci:'#4ef0e8'});
   }
   S.dr=S.dr.filter(d2=>d2.hp>0);
   // void sigil zones
   for(const z of S.zn){ z.ttl-=dt;
-    for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
-      damageE(e,z.dps*dt,z.owner,true);
-    hurtPlayersAt(z.x,z.y,z.r,z.dps*dt,z.owner,true); // PvP: sigils burn players standing in them
+    // ramp: 1 dps at the moment it lands, climbing to z.dps by the end
+    const age=Math.max(0,(z.dur||3)-z.ttl), k=clamp(age/(z.dur||3),0,1);
+    z.cur=1+(Math.max(1,z.dps)-1)*k;
+    const span=dotReady(z,dt);
+    if(span){
+      for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
+        damageE(e,z.cur*span,z.owner,true);
+      hurtPlayersAt(z.x,z.y,z.r,z.cur*span,z.owner,true); // PvP: sigils burn players standing in them
+    }
     if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:'#b34fff'});
   }
   S.zn=S.zn.filter(z=>z.ttl>0);
@@ -624,7 +691,8 @@ function hostUpdate(dt){
     e.shielded=nowShielded; }
   // enemies
   for(const e of S.en){ enemyAct(e,dt); e.flash=Math.max(0,e.flash-dt);
-    if(e.poisT>0){ e.poisT-=dt; damageE(e,e.poisD*dt,e.poisBy,true);
+    if(e.poisT>0){ e.poisT-=dt;
+      const pspan=dotReady(e,dt); if(pspan)damageE(e,e.poisD*pspan,e.poisBy,true);
       if(Math.random()<dt*8)S.fx.push({x:e.x+rnd(-3,3),y:e.y+rnd(-3,3),vx:0,vy:-14,l:.4,ci:'#7cff6b'}); }
     // contact damage: only auto-applied to the host's own local player — remote
     // players self-report contact from their own screen (see applyClientHit)

@@ -13,7 +13,7 @@ function boom(x,y,r,dmg,owner,col){
   hurtPlayersAt(x,y,r,dmg,owner); // PvP: explosions have to catch players too
   for(let i=0;i<16;i++){const a=rnd(0,TAU),sp=rnd(30,95);
     S.fx.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,l:.35,ci:col||'#ff9d3c'});}
-  S.shake=Math.max(S.shake,.12); sfxE('boom');
+  S.shake=Math.max(S.shake,.12); sfxE('boom',x,y);
 }
 
 function wDmg(def,w,p){ return scaleVal(def.dmg,w.lvl)*RARS[w.rar].dm*p.st.dmgM; }
@@ -102,8 +102,11 @@ const BEHAVIORS={
       chain:{hops:cnt(def.hops,w.lvl),range:def.range||85}});
   },
   zone(def,p,w,tg){
+    // Gravity well: starts at a trickle and winds up to a peak slightly
+    // above the listed dps, so lingering in it is what actually hurts.
+    const dur=def.duration||3;
     S.zn.push({x:tg.x,y:tg.y,r:scaleVal(def.radius,w.lvl),
-      dps:wDmg(def,w,p),ttl:def.duration||3,owner:p.id});
+      dps:wDmg(def,w,p)*(def.rampTo||1), dur, ttl:dur, owner:p.id});
   },
   drone(def,p,w){
     const st2=droneStats(def,w.lvl,w.rar,p);
@@ -113,6 +116,9 @@ const BEHAVIORS={
       dmg:st2.dmg,owner:p.id,hitCd:0,r:3,drone:1,team:p.team,stuck:false});
   },
   beam(def,p,w,tg){ // continuous laser: hitscan tick that pierces everyone in the line
+    // The beam's own cooldown IS its damage tick, so its cadence is tuned in
+    // weapons.json (cd 0.22 to match BAL.combat.dotTick) rather than routed
+    // through dotReady() — same rhythm as every other DoT, no extra state.
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), range=def.range||220, dmg=wDmg(def,w,p);
     const dx=Math.cos(a), dy=Math.sin(a), width=def.width||3;
     for(const e of S.en){ if(e.hp<=0)continue;
@@ -149,7 +155,7 @@ const BEHAVIORS={
 /* Resolved from hostUpdate once a smite mark's timer expires. */
 function smiteHit(m){
   boom(m.x,m.y,m.r,m.dmg,m.owner,'#ffd35c');
-  sfxE('smiteHit');
+  sfxE('smiteHit',m.x,m.y);
 }
 /* Chain burst, fired where the Arc Discharge bolt lands. Every hop is
    recorded in S.ar so host and clients draw the arcs that actually hit. */
