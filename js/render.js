@@ -144,6 +144,17 @@ function render(){
       ctx.globalAlpha=.55+Math.sin(now()/140)*.15; ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(ex,ey,14*scl,0,TAU);ctx.stroke(); ctx.globalAlpha=1; ctx.lineWidth=1;
     }
+    // nexus lance — a continuous beam toward whatever it is burning
+    const lOn=isHost?e.laserOn:e.laserOn, lAng=isHost?(e.lang||0):(e.lang||0), lLen=isHost?(e.llen||0):(e.llen||0);
+    if(lOn&&lLen>0){
+      const gx=ex+Math.cos(lAng)*lLen, gy=ey+Math.sin(lAng)*lLen;
+      const col=(e.team!==undefined&&e.team>=0)?teamColor(e.team):'#ff4fd8';
+      ctx.globalAlpha=.25; ctx.strokeStyle=col; ctx.lineWidth=5;
+      ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(gx,gy);ctx.stroke();
+      ctx.globalAlpha=.9; ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(gx,gy);ctx.stroke();
+      ctx.globalAlpha=1;
+    }
     // Nexus Siege: ring team-owned entities in their side's colour, so
     // you can tell your own turrets from the enemy's at a glance
     if(e.team!==undefined&&e.team>=0){
@@ -223,10 +234,13 @@ function render(){
     if(isPicking){ctx.globalAlpha=.5;ctx.strokeStyle='#ffd35c';
       ctx.beginPath();ctx.arc(px,py,9,0,TAU);ctx.stroke();ctx.globalAlpha=1;}
     if(p.id!==myId&&!p.dead){
-      const nm=isHost?p.name:(clientRoster.get(p.id)||{}).name||'ALLY';
+      let nm=isHost?p.name:(clientRoster.get(p.id)||{}).name||'ALLY';
+      if(p.lvl)nm+=' [ '+p.lvl+' ]'; // siege level tag: "voramus [ 2 ]"
       ctx.font='bold 7px monospace';ctx.textAlign='center';
       ctx.fillStyle='#000';ctx.fillText(nm,Math.round(px)+1,Math.round(py-8)+1);
-      ctx.fillStyle='#e8ecff';ctx.fillText(nm,Math.round(px),Math.round(py-8));
+      // enemies read in their team colour so you can pick targets at a glance
+      ctx.fillStyle=(p.team!==undefined&&p.team>=0)?teamColor(p.team):'#e8ecff';
+      ctx.fillText(nm,Math.round(px),Math.round(py-8));
     }
     ctx.globalAlpha=1;
   }
@@ -270,7 +284,18 @@ function updateHUD(){
     $('shwrap').style.display=shMax>0?'block':'none';
     if(shMax>0)$('shbar').style.width=clamp((me.shield||0)/shMax*100,0,100)+'%';
   }
-  $('hWave').textContent=wave; $('hScore').textContent=score; $('hShards').textContent=shards;
+  // Nexus Siege: the wave counter is meaningless, so the slot shows your
+  // level instead and the XP bar appears under the T-charge bar.
+  const siege=(role!=='client'?!!(S&&S.moba):!!(V&&V.mb));
+  $('xpwrap').style.display=siege?'block':'none';
+  $('hWaveLabel').textContent=siege?'LEVEL':'WAVE';
+  if(siege&&me){
+    const lv=me.lvl||1;
+    const need=(role!=='client')?xpNeeded(lv):(me.xpNeed||0);
+    $('xpbar').style.width=(need>0?clamp((me.xp||0)/need*100,0,100):0)+'%';
+    $('hWave').textContent=lv;
+  }else $('hWave').textContent=wave;
+  $('hScore').textContent=score; $('hShards').textContent=shards;
   // boss healthbar
   let bnm='',bhp=0,hasBoss=false;
   if(role!=='client'&&S){

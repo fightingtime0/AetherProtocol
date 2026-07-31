@@ -106,6 +106,8 @@ kbd{background:#10152a;border:1px solid var(--edge);padding:2px 7px;border-radiu
 #shbar{height:100%;background:linear-gradient(90deg,#3b7bd6,#bfe6ff);width:100%;transition:width .12s}
 #tbar{height:100%;background:linear-gradient(90deg,#2f6bff,var(--cyan));width:100%;transition:width .12s}
 #tbar.lock{background:repeating-linear-gradient(45deg,#2a4a52,#2a4a52 4px,#152830 4px,#152830 8px)}
+/* Nexus Siege experience bar — gold, to read as "progress" not "resource" */
+#xpbar{height:100%;background:linear-gradient(90deg,#c98a1e,#ffd35c);width:0;transition:width .12s}
 /* boss bar */
 #bossWrap{position:fixed;top:8px;left:50%;transform:translateX(-50%);width:min(420px,64vw);z-index:5;pointer-events:none;text-align:center}
 #bossName{font-size:11px;letter-spacing:.22em;color:var(--magenta);text-shadow:1px 1px 0 #000;margin-bottom:3px;font-weight:bold}

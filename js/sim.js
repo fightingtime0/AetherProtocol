@@ -54,6 +54,7 @@ function respawnPersistent(p){
   np.team=p.team; // mkPlayer() has no concept of teams — without this a
                   // respawned siege player turns neutral and can shoot its own base
   np.bot=p.bot;   // ...and a respawned bot would stop thinking entirely
+  np.lvl=p.lvl; np.xp=p.xp; // dying must not cost you your level
   np.inv=(BAL.battleground&&BAL.battleground.respawnInvuln)||10;
   S.players.set(p.id,np);
 }
@@ -192,8 +193,34 @@ function objDone(v){
 }
 
 /* ---------------- damage ---------------- */
-function hurt(p,amt){
+/* ---------------- PvP damage against PLAYERS ----------------
+   Every weapon path except plain projectiles only ever iterated S.en, so
+   explosions, beams, zones, drones and the orbit/saber sweeps passed
+   straight through enemy players. These helpers give them a target list.
+
+   Bullet hits keep the existing split (a remote client detects its own
+   and reports it), but there is no client-side detection for an explosion
+   or a beam — the receiving client never simulates them — so the host
+   resolves those outright for everyone. */
+const NO_FOES=[];
+function foePlayers(src){
+  if(!S.pvp||!src)return NO_FOES;
+  const out=[];
+  for(const q of S.players.values()){
+    if(q===src||q.dead||!hostile(src.team,q.team))continue;
+    out.push(q);
+  }
+  return out;
+}
+function foePlayersOf(ownerId){ return foePlayers(S.players.get(ownerId)); }
+function hurtPlayersAt(x,y,r,dmg,ownerId){
+  for(const q of foePlayersOf(ownerId))
+    if(Math.hypot(q.x-x,q.y-y)<r+q.r) hurt(q,dmg,ownerId);
+}
+/* srcId lets a kill be credited for XP — see grantXp()/mobaOnPlayerKill(). */
+function hurt(p,amt,srcId){
   if(p.inv>0||p.dead||now()<p.pickInvUntil)return;
+  if(srcId!==undefined&&srcId!==p.id)p.lastHitBy=srcId;
   amt=Math.round(amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1));   // difficulty + glass-cannon scaling
   amt=Math.max(1,amt-(p.armor||0));              // armor: flat reduction per hit
   p.shieldCd=BAL.player.shield.regenDelay;       // any hit delays shield regen
@@ -207,7 +234,11 @@ function hurt(p,amt){
   }
   p.hp-=amt; sfxE('hurt');
   for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
-  if(p.hp<=0){ p.hp=0; p.dead=true; toastAll(p.name+' is down!'); sfxE('down');
+  if(p.hp<=0){ p.hp=0; p.dead=true; sfxE('down');
+    const killer=S.players.get(p.lastHitBy);
+    if(S.moba&&killer&&killer!==p) mobaOnPlayerKill(killer,p);
+    else toastAll(p.name+' is down!');
+    p.lastHitBy=undefined;
     if(S.moba) p.respawnAt=now()+(MOBA.respawnDelay||6)*1000;
     else if(S.persistent) p.respawnAt=now()+((BAL.battleground&&BAL.battleground.respawnDelay)||3)*1000;
     else if([...S.players.values()].every(q=>q.dead)) runOver(); }
@@ -226,7 +257,7 @@ function applyClientHit(p,kind,id){
     b.dead=true;
     if(p.inv>0){ p.surgeT=PB.surge.duration; sfxE('surge');
       for(let i=0;i<5;i++)S.fx.push({x:b.x,y:b.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.3,ci:'#ffd35c'});
-    }else hurt(p,CB.enemyBulletDamage);
+    }else hurt(p,b.dmg||CB.enemyBulletDamage);
   }else if(kind==='m'){
     const e=S.en.find(e2=>e2.id===id&&e2.hp>0);
     if(!e)return;
@@ -259,6 +290,7 @@ function damageE(e,dmg,owner,quiet){
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
     S.score+=e.sc; sfxE(e.boss?'bosskill':'kill');
     const p=S.players.get(owner);
+    if(S.moba&&p)grantXp(p,mobaXpForEntity(e)); // siege upgrades are earned by killing
     if(p&&e.core!==undefined) toastAll(p.name+' downed a pylon!'); // multi-part boss part died
     if(p&&p.tKillRefund>0) p.t=Math.min(p.tMax,p.t+p.tKillRefund);
     const sh=Math.round(e.sh*(p?p.st.greed:1)*DIFF().shardMult);
@@ -297,7 +329,11 @@ function genOpts(p){
       pool.push({t:'new',k,rar});
     }
   }
-  PASSIVES.forEach(ps=>{ if(ps.mp&&S.players.size<2)return; pool.push({t:'pas',ps}); });
+  PASSIVES.forEach(ps=>{ if(ps.mp&&S.players.size<2)return;
+    // bots never even see the T-charge specials or Glass Reactor, so a roll
+    // of three unsafe passives can't force one on them
+    if(p.bot&&!botSafePassive(ps))return;
+    pool.push({t:'pas',ps}); });
   pool.sort(()=>Math.random()-.5);
   const seen=new Set();
   for(const o of pool){
@@ -324,11 +360,14 @@ function applyOpt(p,o){
 function ownedView(p){return p.weapons.map(w=>({g:WPN[w.id].g,n:WPN[w.id].n,lvl:w.lvl,rar:w.rar}));}
 function startPick(p,keepDeadline){
   p.pickOpts=genOpts(p);
+  // Bots decide instantly, so they must return BEFORE the pick window's
+  // timers are set — pickInvUntil would otherwise hand every bot 10
+  // seconds of invulnerability on every single level-up.
+  if(p.bot){ botPick(p); return; }
   if(!keepDeadline) p.pickUntil=now()+BAL.waves.pickSeconds*1000;
   // invincibility + weapon-pause only lasts 10s, not the whole decision window —
   // player keeps moving and the rest of the battle keeps running around them
   p.pickInvUntil=now()+10000;
-  if(p.bot){ botPick(p); return; }   // a bot must never hold the pick window open
   if(p.id===myId) showPickUI(p.pickOpts.map(optView),p.pickUntil,ownedView(p));
   else sendTo(p.id,{t:'pk',opts:p.pickOpts.map(optView),dl:p.pickUntil,own:ownedView(p)});
 }
@@ -473,7 +512,14 @@ function hostUpdate(dt){
         const ea=Math.atan2(e.y-p.y,e.x-p.x);
         for(let i=0;i<n;i++){ let da=ea-(p.orbA+i/n*TAU);
           da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.orbit.arc){ damageE(e,orbDmg(p,w)*dt*CB.orbit.tickMult*p.dmgBoost,p.id); break; } } } }
+          if(Math.abs(da)<CB.orbit.arc){ damageE(e,orbDmg(p,w)*dt*CB.orbit.tickMult*p.dmgBoost,p.id); break; } } }
+      for(const q of foePlayers(p)){ // same sweep, against hostile players
+        const dd=Math.hypot(q.x-p.x,q.y-p.y);
+        if(dd>CB.orbit.radius+6+q.r)continue;
+        const ea=Math.atan2(q.y-p.y,q.x-p.x);
+        for(let i=0;i<n;i++){ let da=ea-(p.orbA+i/n*TAU);
+          da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
+          if(Math.abs(da)<CB.orbit.arc){ hurt(q,orbDmg(p,w)*dt*CB.orbit.tickMult*p.dmgBoost,p.id); break; } } } }
     // saber sweep
     for(const w of p.weapons){ if(!WPN[w.id].passiveSaber)continue;
       const n=sabCountW(w);
@@ -484,7 +530,14 @@ function hostUpdate(dt){
         const ea=Math.atan2(e.y-p.y,e.x-p.x);
         for(let i=0;i<n;i++){ let da=ea-(p.sabA+i/n*TAU);
           da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
-          if(Math.abs(da)<CB.saber.arc){ damageE(e,dmg*dt*CB.saber.tickMult,p.id); break; } } } }
+          if(Math.abs(da)<CB.saber.arc){ damageE(e,dmg*dt*CB.saber.tickMult,p.id); break; } } }
+      for(const q of foePlayers(p)){ // same sweep, against hostile players
+        const dd=Math.hypot(q.x-p.x,q.y-p.y);
+        if(dd>CB.saber.reach+q.r)continue;
+        const ea=Math.atan2(q.y-p.y,q.x-p.x);
+        for(let i=0;i<n;i++){ let da=ea-(p.sabA+i/n*TAU);
+          da=((da%TAU)+TAU)%TAU; if(da>Math.PI)da-=TAU;
+          if(Math.abs(da)<CB.saber.arc){ hurt(q,dmg*dt*CB.saber.tickMult,p.id); break; } } } }
   }
   // servitor drones: seek & ram foes, soak enemy fire
   const DR=CB.drones;
@@ -504,6 +557,8 @@ function hostUpdate(dt){
       if(Math.hypot(e.x-dn.x,e.y-dn.y)<e.r+3){
         damageE(e,dn.dmg*dt*DR.contactTick,dn.owner);
         if(dn.hitCd<=0){dn.hitCd=DR.clawCooldown;dn.hp-=DR.clawDamage;} } }
+    // PvP: servitors ram hostile players too
+    hurtPlayersAt(dn.x,dn.y,3,dn.dmg*dt*DR.contactTick,dn.owner);
     if(dn.hp<=0)for(let i=0;i<8;i++)S.fx.push({x:dn.x,y:dn.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.35,ci:'#4ef0e8'});
   }
   S.dr=S.dr.filter(d2=>d2.hp>0);
@@ -511,6 +566,7 @@ function hostUpdate(dt){
   for(const z of S.zn){ z.ttl-=dt;
     for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
       damageE(e,z.dps*dt,z.owner,true);
+    hurtPlayersAt(z.x,z.y,z.r,z.dps*dt,z.owner); // PvP: sigils burn players standing in them
     if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:'#b34fff'});
   }
   S.zn=S.zn.filter(z=>z.ttl>0);
@@ -570,15 +626,18 @@ function hostUpdate(dt){
         if(b.slow)e.slowT=1.2;
         if(b.pois){e.poisT=3;e.poisD=Math.max(e.poisD||0,b.pois);e.poisBy=b.owner;}
         if(b.pierce>0)b.pierce--;else b.dead=true;}}
-    // PvP against the HOST's own player. Remote players detect hits on
-    // themselves and report them, but nobody does that on the host's
-    // behalf — in Battleground the host is headless so it never mattered,
-    // but in a siege the host is a player and was simply bulletproof.
-    if(!b.dead&&S.pvp&&b.owner!==myId){
-      const hp2=S.players.get(myId);
-      if(hp2&&!hp2.dead&&hostile(bTeam,hp2.team)&&Math.hypot(b.x-hp2.x,b.y-hp2.y)<3+hp2.r){
+    // PvP bullets against players the host owns outright: its own player
+    // and every bot. Remote humans still self-report ("only get hit by
+    // what you saw"), but nobody reports for a bot, so bot-vs-bot and
+    // player-vs-bot fire previously hit nothing at all.
+    if(!b.dead&&S.pvp)for(const q of S.players.values()){
+      if(q.dead||q.id===b.owner)continue;
+      if(q.id!==myId&&!q.bot)continue;              // remote humans report their own hits
+      if(!hostile(bTeam,q.team))continue;
+      if(Math.hypot(b.x-q.x,b.y-q.y)<3+q.r){
         b.dead=true;
-        hurt(hp2,b.dmg*((S.moba?MOBA.pvpDamageMult:0)||(BAL.battleground&&BAL.battleground.pvpDamageMult)||1));
+        hurt(q,b.dmg*((S.moba?MOBA.pvpDamageMult:0)||(BAL.battleground&&BAL.battleground.pvpDamageMult)||1),b.owner);
+        break;
       }
     }
     if(b.ttl<=0||bulletHitsObstacle(b))b.dead=true;
@@ -610,14 +669,14 @@ function hostUpdate(dt){
     if(!b.dead&&b.team!==undefined)for(const e of S.en){
       if(e.hp<=0||!hostile(b.team,e.team))continue;
       if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+b.r+1){
-        b.dead=true; damageE(e,CB.enemyBulletDamage,undefined,true); break; }
+        b.dead=true; damageE(e,b.dmg||CB.enemyBulletDamage,undefined,true); break; }
     }
     if(!b.dead)for(const p of S.players.values()){if(p.dead||p.id!==myId)continue;
       if(!hostile(b.team,p.team))continue; // friendly fire is off in a match
       if(Math.hypot(b.x-p.x,b.y-p.y)<b.r+p.r){b.dead=true;
         if(p.inv>0){ p.surgeT=PB.surge.duration; sfxE('surge'); // phase surge: absorb a bolt with i-frames
           for(let i=0;i<5;i++)S.fx.push({x:b.x,y:b.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.3,ci:'#ffd35c'}); }
-        else hurt(p,CB.enemyBulletDamage);
+        else hurt(p,b.dmg||CB.enemyBulletDamage); // structures carry their own damage
         break;}}
     if(b.ttl<=0||bulletHitsObstacle(b))b.dead=true;}
   S.eb=S.eb.filter(b=>!b.dead);

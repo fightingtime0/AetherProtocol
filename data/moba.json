@@ -18,7 +18,11 @@
     "auraDamage": 0.18,
     "auraRegen": 2.0,
     "shotInterval": 1.1,
-    "range": 340
+    "range": 340,
+    "shotDamage": 14,
+    "laserRange": 300,
+    "laserWidth": 4,
+    "laserDps": 26
   },
   "baseboss": {
     "patrolRadius": 150,
@@ -33,9 +37,18 @@
     "chargeCooldown": 4.5
   },
   "turret": {
-    "shotInterval": 0.85,
-    "range": 320,
-    "bulletSpeed": 90
+    "shotInterval": 0.7,
+    "range": 340,
+    "bulletSpeed": 95,
+    "damage": 16
+  },
+
+  "xp": {
+    "base": 60,
+    "growth": 1.25,
+    "scoreToXp": 0.5,
+    "minUnit": 4,
+    "playerKill": 120
   },
 
   "bot": {
@@ -64,5 +77,6 @@
 
   "creepInterval": 30,
   "respawnDelay": 10,
+  "respawnInvuln": 3,
   "pvpDamageMult": 1.0
 }

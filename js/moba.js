@@ -110,26 +110,31 @@ function newMobaSim(playersInfo){
     applyMetaObj(p, (pi.id===myId&&!pi.bot)?save.meta:pi.meta);
     p.team=(pi.team===1)?1:0;
     p.bot=!!pi.bot;
+    p.lvl=1; p.xp=0;
     const sp=mobaSpawn(p.team); p.x=sp.x; p.y=sp.y;
     S.players.set(pi.id,p);
   });
   mobaSpawnStructures();
 }
-/* Respawn at your own base rather than a random spot.
-   respawnPersistent() REPLACES the object in S.players, so the position
-   has to be written to the new one — writing to `p` silently updated a
-   discarded object and left players respawning in random corners. */
+/* Respawn at your own base, keeping everything earned — a siege death
+   costs you time, not progress. Deliberately does NOT go through
+   respawnPersistent(): that rebuilds the player from scratch (correct for
+   Battleground, where a fresh loadout is the point) and would throw away
+   weapons, upgrades, level and XP every single death. */
 function mobaRespawn(p){
-  const team=p.team||0;
-  respawnPersistent(p);
-  const np=S.players.get(p.id)||p;
-  np.team=team;
-  const sp=mobaSpawn(team);
-  np.x=sp.x; np.y=sp.y;
+  p.hp=p.maxhp;
+  p.dead=false;
+  p.shield=p.shieldMax||0;
+  p.inv=(MOBA.respawnInvuln||3);
+  p.respawnAt=0;
+  p.lastHitBy=undefined;
+  p.t=p.tMax; p.tLock=false;
+  const sp=mobaSpawn(p.team||0);
+  p.x=sp.x; p.y=sp.y;
   // hostUpdate() copies myPos over the local player every tick, so without
   // this the host would be yanked straight back to where it died
-  if(np.id===myId){ myPos.x=np.x; myPos.y=np.y; myPos.dead=false; }
-  return np;
+  if(p.id===myId){ myPos.x=p.x; myPos.y=p.y; myPos.dead=false; }
+  return p;
 }
 function mobaNexus(team){ return S.en.find(e=>e.k==='nexus'&&e.team===team&&e.hp>0); }
 
@@ -163,6 +168,35 @@ function mobaUpdate(dt){
   if(S.creepT<=0){ S.creepT=MOBA.creepInterval; spawnCreepWave(); }
   // bots think here; their weapons already auto-fire with everyone else's
   for(const p of S.players.values()) if(p.bot)botUpdate(p,dt);
+}
+
+/* ---------------- experience & levels ----------------
+   A siege has no waves, so upgrades are earned instead: XP from kills,
+   and every level grants one pick. Killing an enemy PLAYER is worth far
+   more than any creep, which is what makes fighting them worthwhile. */
+function xpNeeded(lvl){ const X=MOBA.xp; return Math.round(X.base*Math.pow(X.growth,lvl-1)); }
+function grantXp(p,amt){
+  if(!p||!S.moba||amt<=0)return;
+  p.lvl=p.lvl||1; p.xp=(p.xp||0)+amt;
+  let guard=0;
+  while(p.xp>=xpNeeded(p.lvl)&&guard++<20){
+    p.xp-=xpNeeded(p.lvl);
+    p.lvl++;
+    if(!p.pickOpts)startPick(p);   // one upgrade per level
+    if(p.id===myId)toast('LEVEL '+p.lvl);
+    else sendTo(p.id,{t:'ts',m:'LEVEL '+p.lvl});
+  }
+}
+/* XP for killing a unit — derived from its score so structures are worth
+   far more than creeps without a second table to keep in sync. */
+function mobaXpForEntity(e){
+  return Math.max(MOBA.xp.minUnit,Math.round((e.sc||0)*MOBA.xp.scoreToXp));
+}
+function mobaOnPlayerKill(killer,victim){
+  grantXp(killer,MOBA.xp.playerKill);
+  killer.score=(killer.score||0)+1;
+  toastAll(killer.name+' slew '+victim.name);
+  sfxE('bosskill');
 }
 
 /* ---------------- creeps ---------------- */

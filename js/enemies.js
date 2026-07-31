@@ -9,8 +9,8 @@ let eidc=1;
 let bidc=1;
 /* team is undefined for classic PvE fire (hits players only, as always);
    MOBA structures pass their own team so friendly fire is impossible. */
-function ebul(x,y,a,sp,ci,r=1.5,team){ sp*=DIFF().aggression||1;
-  S.eb.push({id:bidc++,x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r,ci,ttl:5,team}); }
+function ebul(x,y,a,sp,ci,r=1.5,team,dmg){ sp*=DIFF().aggression||1;
+  S.eb.push({id:bidc++,x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r,ci,ttl:5,team,dmg}); }
 
 function mkE(k){
   const T=ET[ETI[k]];
@@ -147,12 +147,32 @@ function enemyAct(e,dt){
       never damage their own side. `p` here is whatever nearestFoe()
       picked — a hostile player, creep or structure. */
    case 'nexus':{ const N=MOBA.nexus;
+     // continuous lance: locks the nearest foe and burns it every tick.
+     // lang/llen ride the snapshot so clients can draw the same beam.
+     if(d<N.laserRange){
+       e.lang=aim; e.llen=Math.min(d,N.laserRange); e.laserOn=1;
+       const lx=Math.cos(aim), ly=Math.sin(aim);
+       const bite=(t2)=>{ // anything hostile lying along the beam line
+         const ex=t2.x-e.x, ey=t2.y-e.y, proj=ex*lx+ey*ly;
+         if(proj<0||proj>N.laserRange+t2.r)return false;
+         return Math.abs(ex*ly-ey*lx)<N.laserWidth+t2.r;
+       };
+       for(const q of S.players.values()){
+         if(q.dead||!hostile(e.team,q.team))continue;
+         if(q.id!==myId&&!q.bot)continue;           // remote humans self-report
+         if(bite(q))hurt(q,N.laserDps*dt);
+       }
+       for(const o of S.en){
+         if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
+         if(bite(o))damageE(o,N.laserDps*dt,undefined,true);
+       }
+     }else{ e.laserOn=0; e.llen=0; }
      if(d<N.range&&e.cd<=0){ e.cd=N.shotInterval;
-       for(let i=-1;i<=1;i++)ebul(e.x,e.y,aim+i*.18,70,4,2,e.team); }
+       for(let i=-1;i<=1;i++)ebul(e.x,e.y,aim+i*.18,70,4,2,e.team,N.shotDamage); }
      break; }
    case 'laneturret':{ const T=MOBA.turret;
      if(d<T.range&&e.cd<=0){ e.cd=T.shotInterval;
-       ebul(e.x,e.y,aim,T.bulletSpeed,2,1.5,e.team); }
+       ebul(e.x,e.y,aim,T.bulletSpeed,2,2,e.team,T.damage); }
      break; }
    case 'guardian':{ const G=MOBA.baseboss;
      // Shoots continuously AND periodically telegraphs a lunge.

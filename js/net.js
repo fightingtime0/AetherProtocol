@@ -139,10 +139,12 @@ function snap(){
       p.orbN||0,p.sabN||0,
       Math.round(p.shield),Math.round(p.shieldMax),
       Math.round((p.beamAng||0)*100),Math.round(p.beamLen||0),
-      p.team===undefined?-1:p.team]);
+      p.team===undefined?-1:p.team,
+      p.lvl||0,Math.round(p.xp||0),p.lvl?xpNeeded(p.lvl):0]);
   const en=S.en.map(e=>[e.id,e.ti,Math.round(e.x),Math.round(e.y),
     Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0,
-    e.team===undefined?-1:e.team]);
+    e.team===undefined?-1:e.team,
+    e.laserOn?Math.round((e.lang||0)*100):0,e.laserOn?Math.round(e.llen||0):0]);
   const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
   const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
@@ -174,7 +176,7 @@ function applySnap(s){
   V.wave=s.w; V.score=s.sc; V.pvp=!!s.pvp;
   if(s.sx)for(const k of s.sx)sfx(k);
   const seenP=new Set();
-  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm]=a; seenP.add(id);
+  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm,lv,xp,xpN]=a; seenP.add(id);
     let p=V.players.get(id);
     if(!p){p={id,dx:x,dy:y};V.players.set(id,p);}
     p.px=p.dx;p.py=p.dy;
@@ -186,6 +188,7 @@ function applySnap(s){
     p.shield=shd||0;p.shieldMax=shdMax||0;
     p.beamAng=(bAng||0)/100;p.beamLen=bLen||0;
     p.team=(tm===undefined||tm<0)?undefined:tm;
+    p.lvl=lv||0; p.xp=xp||0; p.xpNeed=xpN||0;
     if(id===myId){
       const wasDead=myPos.dead;
       myPos.spd=spd;myPos.dcd=dcd/100;myPos.dead=!!p.dead;
@@ -196,13 +199,14 @@ function applySnap(s){
     }}
   for(const id of [...V.players.keys()]) if(!seenP.has(id))V.players.delete(id);
   const seenE=new Set();
-  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd,tm]=a; seenE.add(id);
+  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd,tm,lang,llen]=a; seenE.add(id);
     let e=V.en.get(id);
     if(!e){e={id,ti,dx:x,dy:y};V.en.set(id,e);}
     e.px=e.dx;e.py=e.dy;
     if(Math.hypot(x-e.px,y-e.py)>60){e.px=x;e.py=y;} // warlock/reaper/titan blinks
     e.tx=x;e.ty=y;e.st=t;e.hpp=hpp;e.flash=fl;e.tel=tel;e.scl=scl||1;e.shielded=!!shd;
-    e.team=(tm===undefined||tm<0)?undefined:tm;}
+    e.team=(tm===undefined||tm<0)?undefined:tm;
+    e.lang=(lang||0)/100; e.llen=llen||0; e.laserOn=!!llen;}
   for(const id of [...V.en.keys()]) if(!seenE.has(id))V.en.delete(id);
   V.eb=s.eb; V.pb=s.pb; V.it=s.it; V.dr=s.dr||[]; V.zn=s.zn||[]; V.obj=s.ob||0;
   V.mb=s.mb||0; // Nexus Siege HUD: [nexus0 hp%, nexus1 hp%, winner]

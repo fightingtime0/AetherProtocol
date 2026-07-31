@@ -10,6 +10,7 @@
 function pbul(o){ S.pb.push(Object.assign({id:bidc++,r:1.5,ttl:2.4,pierce:0,ci:0,home:0,slow:0},o)); }
 function boom(x,y,r,dmg,owner,col){
   for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-x,e.y-y)<r+e.r) damageE(e,dmg,owner);
+  hurtPlayersAt(x,y,r,dmg,owner); // PvP: explosions have to catch players too
   for(let i=0;i<16;i++){const a=rnd(0,TAU),sp=rnd(30,95);
     S.fx.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,l:.35,ci:col||'#ff9d3c'});}
   S.shake=Math.max(S.shake,.12); sfxE('boom');
@@ -70,11 +71,17 @@ const BEHAVIORS={
   chain(def,p,w,tg){
     const hops=cnt(def.hops,w.lvl), dmg=wDmg(def,w,p);
     let cur=tg; const hit=new Set();
-    for(let i=0;i<hops&&cur;i++){ hit.add(cur.id); damageE(cur,dmg,p.id);
+    // hostile players are valid links in the chain, not just entities
+    const foes=foePlayers(p);
+    const key=o=>(o.weapons?'p':'e')+o.id; // player and entity ids overlap — keep them distinct
+    for(let i=0;i<hops&&cur;i++){ hit.add(key(cur));
+      if(cur.weapons)hurt(cur,dmg,p.id); else damageE(cur,dmg,p.id);
       for(let j=0;j<5;j++)S.fx.push({x:cur.x,y:cur.y,vx:rnd(-45,45),vy:rnd(-45,45),l:.25,ci:'#4ef0e8'});
       let nx=null,bd=def.range*def.range;
-      for(const e of S.en) if(!hit.has(e.id)&&e.hp>0){
+      for(const e of S.en) if(!hit.has('e'+e.id)&&e.hp>0){
         const d=(e.x-cur.x)**2+(e.y-cur.y)**2; if(d<bd){bd=d;nx=e;} }
+      for(const q of foes) if(!hit.has('p'+q.id)&&!q.dead){
+        const d=(q.x-cur.x)**2+(q.y-cur.y)**2; if(d<bd){bd=d;nx=q;} }
       cur=nx; }
   },
   smite(def,p,w,tg){
@@ -97,6 +104,11 @@ const BEHAVIORS={
       if(proj<0||proj>range+e.r)continue;
       const perp=Math.abs(ex*dy-ey*dx);
       if(perp<width+e.r) damageE(e,dmg,p.id,true); }
+    // same hitscan line, against hostile players
+    for(const q of foePlayers(p)){
+      const ex=q.x-p.x, ey=q.y-p.y, proj=ex*dx+ey*dy;
+      if(proj<0||proj>range+q.r)continue;
+      if(Math.abs(ex*dy-ey*dx)<width+q.r) hurt(q,dmg,p.id); }
     p.beamOnT=0.12; p.beamAng=a; p.beamLen=range;
     if(Math.random()<.6)S.fx.push({x:p.x+dx*rnd(10,range*.9),y:p.y+dy*rnd(10,range*.9),
       vx:rnd(-8,8),vy:rnd(-8,8),l:.12,ci:'#ff4fd8'});
