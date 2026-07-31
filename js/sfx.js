@@ -105,11 +105,25 @@ function sfxE(n){
    faster tempo, brighter lead. Runs on its own gain node so music
    and effects can be balanced (and muted) independently.
    ============================================================ */
-let musGain=null, musTimer=0, musStep=0, musNext=0, musOn=false, musInt=0, musIntT=0;
+let musGain=null, musTimer=0, musStep=0, musNext=0, musOn=false, musInt=0;
+let musTrack=0, musTrackBars=0;
 const MUS_VOL=.22;
-// A minor-ish progression: root note per bar, 4 bars, then loops.
-const MUS_ROOTS=[55,55,73.42,65.41];         // A1 A1 D2 C2
-const MUS_SCALE=[0,3,5,7,10,12,15];          // minor pentatonic-ish offsets (semitones)
+/* A few tracks, cycled so a long match doesn't loop one four-bar phrase
+   forever. Each is a root-per-bar progression plus the scale, timbre and
+   tempo that give it its own character. Switches on a bar line, so the
+   change lands musically instead of mid-phrase. */
+const MUS_TRACKS=[
+  { id:'descent', roots:[55,55,73.42,65.41],        // A1 A1 D2 C2 — the original
+    scale:[0,3,5,7,10,12,15], bpm:96,  lead:'square',   bass:'sawtooth', arpEvery:2 },
+  { id:'pursuit', roots:[61.74,61.74,82.41,73.42],  // B1 B1 E2 D2 — faster, brighter
+    scale:[0,2,3,7,9,12,14],  bpm:116, lead:'square',   bass:'sawtooth', arpEvery:2 },
+  { id:'vigil',   roots:[49,65.41,58.27,49],        // G1 C2 Bb1 G1 — slow, spacious
+    scale:[0,3,7,10,12,15,19], bpm:84, lead:'triangle', bass:'triangle', arpEvery:4 },
+  { id:'siege',   roots:[43.65,58.27,65.41,49],     // F1 Bb1 C2 G1 — dark, tense
+    scale:[0,1,5,7,8,12,13],  bpm:104, lead:'sawtooth', bass:'sawtooth', arpEvery:2 },
+];
+const MUS_BARS_PER_TRACK=16;
+const MUS=()=>MUS_TRACKS[musTrack%MUS_TRACKS.length];
 const semi=(f,n)=>f*Math.pow(2,n/12);
 
 function musNote(f,t0,d,v,w,dest){
@@ -142,31 +156,38 @@ function musHat(t0,v){
 }
 /* one 16th-note step */
 function musSchedule(step,t0){
-  const bar=Math.floor(step/16)%MUS_ROOTS.length, root=MUS_ROOTS[bar];
+  const T=MUS();
+  const bar=Math.floor(step/16)%T.roots.length, root=T.roots[bar];
   const i=musInt; // 0..1
   const b=step%16;
   if(b%4===0) musDrum(t0,.5,150,45,.16);                    // kick on every beat
   if(i>.25&&b%8===4) musDrum(t0,.28,320,140,.10);           // snare-ish backbeat
   if(i>.45&&b%2===1) musHat(t0,.05+i*.05);                  // offbeat hats
-  if(b%8===0) musNote(root,t0,.55,.16,'sawtooth');          // bass root
-  if(i>.15&&b%8===6) musNote(semi(root,7),t0,.28,.10,'sawtooth');
+  if(b%8===0) musNote(root,t0,.55,.16,T.bass);              // bass root
+  if(i>.15&&b%8===6) musNote(semi(root,7),t0,.28,.10,T.bass);
   // arpeggio: denser and brighter as intensity climbs
-  if(i>.3&&b%2===0){
-    const deg=MUS_SCALE[(step*3+bar)%MUS_SCALE.length];
-    musNote(semi(root*4,deg),t0,.16,.045+i*.03,'square');
+  if(i>.3&&b%T.arpEvery===0){
+    const deg=T.scale[(step*3+bar)%T.scale.length];
+    musNote(semi(root*4,deg),t0,.16,.045+i*.03,T.lead);
   }
   if(i>.7&&b%4===2){ // high counter-line only when things are hectic
-    const deg=MUS_SCALE[(step*5+1)%MUS_SCALE.length];
+    const deg=T.scale[(step*5+1)%T.scale.length];
     musNote(semi(root*8,deg),t0,.10,.028,'triangle');
   }
 }
 function musTick(){
   if(!AC||!musOn||!musGain)return;
-  const stepDur=(60/(96+musInt*44))/4;   // 96→140 BPM, sixteenths
-  while(musNext<AC.currentTime+.12){     // 120ms lookahead
+  const T=MUS();
+  const stepDur=(60/(T.bpm+musInt*40))/4;   // tempo lifts with intensity, sixteenths
+  while(musNext<AC.currentTime+.12){        // 120ms lookahead
     if(musNext<AC.currentTime)musNext=AC.currentTime+.02; // recover from a stalled tab
     musSchedule(musStep,musNext);
     musStep++; musNext+=stepDur;
+    // advance to the next track on a bar line so the switch lands musically
+    if(musStep%16===0){
+      musTrackBars++;
+      if(musTrackBars>=MUS_BARS_PER_TRACK){ musTrackBars=0; musTrack++; musStep=0; }
+    }
   }
 }
 /* Intensity from the live sim: wave progress, plus a big lift for bosses.
@@ -190,6 +211,8 @@ function musicStart(){
     musGain.connect(AC.destination);
   }
   if(musOn)return;
+  // start somewhere different each run rather than always on track 0
+  musTrack=Math.floor(Math.random()*MUS_TRACKS.length); musTrackBars=0;
   musOn=true; musStep=0; musInt=0; musNext=AC.currentTime+.1;
   clearInterval(musTimer);
   musTimer=setInterval(()=>{musUpdateIntensity();musTick();},25);

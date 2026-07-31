@@ -227,8 +227,20 @@ function hurtPlayersAt(x,y,r,dmg,ownerId,dot){
 function hurt(p,amt,srcId,dot){
   if(p.inv>0||p.dead||now()<p.pickInvUntil)return;
   if(srcId!==undefined&&srcId!==p.id)p.lastHitBy=srcId;
-  amt=Math.round(amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1));   // difficulty + glass-cannon scaling
-  amt=Math.max(1,amt-(p.armor||0));              // armor: flat reduction per hit
+  if(dot){
+    // Continuous damage arrives ~60x/second in fractional amounts. The
+    // integer rounding and the 1-damage floor below would promote every
+    // sub-1 tick to a full point, pinning ANY damage-over-time source at
+    // roughly 60 dps no matter how it is tuned — which is exactly why
+    // halving the laser's configured dps changed almost nothing.
+    // Armour is a per-HIT flat reduction and is deliberately not applied
+    // per tick; doing so would cancel a DoT outright.
+    amt=amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1);
+    if(amt<=0)return;
+  }else{
+    amt=Math.round(amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1)); // difficulty + glass-cannon scaling
+    amt=Math.max(1,amt-(p.armor||0));            // armor: flat reduction per hit
+  }
   p.shieldCd=BAL.player.shield.regenDelay;       // any hit delays shield regen
   if(!dot){ p.inv=.9; if(p.id===myId)S.shake=.28; } // continuous damage grants no i-frames
   if(S.obj&&!S.obj.done&&S.obj.ty==='notouch')objDone(-1);

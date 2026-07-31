@@ -1,16 +1,33 @@
 {
   "_comment": "NEXUS SIEGE (MOBA mode). Lane runs left-to-right; team 0 holds the left base, team 1 the right. Structure x positions are fractions of world width for team 0 and are mirrored (1-f) for team 1.",
 
-  "world": { "w": 5400, "h": 620 },
-  "obstacles": 110,
+  "difficulty": "normal",
+  "world": { "w": 5400, "h": 400 },
+  "obstacles": 120,
   "obstacleRadius": [6, 15],
-  "laneHalfHeight": 150,
+  "laneHalfHeight": 110,
 
   "positions": {
     "spawn":    0.035,
     "nexus":    0.095,
     "baseboss": 0.170,
     "turret":   0.310
+  },
+  "guardianOffset": 70,
+
+  "_siegeLord": "Boss-wave miniboss: the base guardian's moveset (volleys + telegraphed lunge) but it marches the lane, has no laser, and is weaker than a real guardian.",
+  "siegeLord": {
+    "everyNWaves": 3,
+    "aggroRadius": 260,
+    "standoff": 90,
+    "range": 280,
+    "shotInterval": 1.5,
+    "damage": 26,
+    "chargeRange": 230,
+    "chargeWindup": 0.65,
+    "chargeTime": 0.85,
+    "chargeSpeed": 235,
+    "chargeCooldown": 5.0
   },
 
   "nexus": {
@@ -22,7 +39,7 @@
     "shotDamage": 42,
     "laserRange": 320,
     "laserWidth": 5,
-    "laserDps": 95
+    "laserDps": 34
   },
   "baseboss": {
     "patrolRadius": 150,
@@ -38,7 +55,7 @@
     "damage": 34,
     "laserRange": 260,
     "laserWidth": 4,
-    "laserDps": 70
+    "laserDps": 24
   },
   "turret": {
     "shotInterval": 0.7,
@@ -47,7 +64,7 @@
     "damage": 38,
     "laserRange": 300,
     "laserWidth": 4,
-    "laserDps": 80
+    "laserDps": 28
   },
 
   "xp": {

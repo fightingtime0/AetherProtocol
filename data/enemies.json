@@ -207,6 +207,15 @@
       "rows": ["..2..", ".323.", "31113", "31113", ".3.3."]
     }
   },
+  {
+    "_comment": "Boss-wave miniboss creep. Guardian moveset, marches the lane, no laser, weaker than a real base guardian. Angular horned silhouette so it reads instantly against the round creeps.",
+    "id": "siegelord", "ai": "siegelord", "mini": true, "meleeDash": true, "scale": 1.7,
+    "hp": 12000, "spd": 30, "r": 8, "score": 220, "shards": 18,
+    "sprite": {
+      "pal": { "1": "#5c2a6b", "2": "#ff9d3c", "3": "#e8ecff", "4": "#2b1040", "5": "#ffd35c" },
+      "rows": ["3.........3", ".3.......3.", "..4111114..", ".411525114.", "41152521514", "41155255141", "41152521514", ".411525114.", "..4111114..", ".3..1.1..3.", "3..4...4..3"]
+    }
+  },
   { "_comment": "MOBA structures — no \"pool\" key, so they never enter wave spawns; placed only by moba.js",
     "id": "nexus", "ai": "nexus", "boss": true, "bossName": "NEXUS CORE", "scale": 3,
     "hp": 42000, "spd": 0, "r": 18, "score": 0, "shards": 0,

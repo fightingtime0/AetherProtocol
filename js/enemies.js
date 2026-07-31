@@ -182,6 +182,34 @@ function enemyAct(e,dt){
        e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt;
      }
      break; }
+   case 'siegelord':{ const L=MOBA.siegeLord;
+     // Boss-wave miniboss: the guardian's volley + telegraphed lunge, but it
+     // MARCHES the lane like a creep instead of holding a post, and has no
+     // laser. st: 0 advance · 1 windup · 2 lunge · 3 recovery.
+     e.laserOn=0; e.llen=0;
+     e.tpT-=dt;
+     if(e.st===1){ e.flash=.05; e.stT-=dt; if(e.stT<=0){ e.st=2; e.stT=L.chargeTime; } }
+     else if(e.st===2){ const ox=e.x, oy=e.y;
+       e.x+=Math.cos(e.ang)*L.chargeSpeed*sm*dt; e.y+=Math.sin(e.ang)*L.chargeSpeed*sm*dt;
+       e.stT-=dt;
+       const hitObs=obstacles.some(o=>Math.hypot(o.x-e.x,o.y-e.y)<o.r+e.r);
+       if(e.stT<=0||hitObs||e.x<8||e.x>WW-8||e.y<8||e.y>WH-8){
+         e.st=3; e.stT=.6; e.tpT=L.chargeCooldown; if(hitObs){e.x=ox;e.y=oy;} } }
+     else if(e.st===3){ e.stT-=dt; if(e.stT<=0)e.st=0; }
+     else{
+       const tg=structFoe(e,L.aggroRadius);        // creeps first, then players
+       if(tg){
+         const ta=Math.atan2(tg.y-e.y,tg.x-e.x), td=Math.hypot(tg.x-e.x,tg.y-e.y);
+         if(td>L.standoff){ e.x+=Math.cos(ta)*e.spd*sm*dt; e.y+=Math.sin(ta)*e.spd*sm*dt; }
+         if(td<L.chargeRange&&e.tpT<=0){ e.st=1; e.stT=L.chargeWindup; e.ang=ta; }
+         else if(td<L.range&&e.cd<=0){ e.cd=L.shotInterval;
+           for(let i=-2;i<=2;i++)ebul(e.x,e.y,ta+i*.14,74,3,1.5,e.team,L.damage); }
+       }else{ // nothing to fight — push toward the enemy nexus
+         const gx=e.goalX-e.x, gy=e.goalY-e.y, gd=Math.hypot(gx,gy)||1;
+         e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt;
+       }
+     }
+     break; }
    /* ---- MOBA structures (see moba.js) ----
       All three are team-owned and fire team-tagged bolts, so they can
       never damage their own side. `p` here is whatever nearestFoe()

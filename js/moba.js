@@ -87,8 +87,9 @@ function mobaSpawnStructures(){
     const at=f=>team===0?WW*f:WW*(1-f); // team 1 mirrors about the centre
     S.en.push(mkStruct('nexus',team,at(P.nexus),laneY));
     S.en.push(mkStruct('basebss',team,at(P.baseboss),laneY));
-    // two guardians per base, offset above and below the lane
-    S.en.push(mkStruct('basebss',team,at(P.baseboss),laneY-110));
+    // second guardian offset off the lane — offset is data-driven so it stays
+    // inside the map however thin the corridor gets
+    S.en.push(mkStruct('basebss',team,at(P.baseboss),laneY-(MOBA.guardianOffset||70)));
     S.en.push(mkStruct('laneturret',team,at(P.turret),laneY));
   }
 }
@@ -99,6 +100,10 @@ function mobaSpawn(team){
 
 /* ---------------- match lifecycle ---------------- */
 function newMobaSim(playersInfo){
+  // A siege hides the difficulty chips, but diffKey would otherwise carry
+  // over from the title screen and silently scale structure damage by up
+  // to 3.4x. Pin it so siege balance means one thing.
+  if(DIFFS[MOBA.difficulty||'normal'])diffKey=MOBA.difficulty||'normal';
   obstacles=genMobaWorld();
   eidc=1; bidc=1;
   S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],obj:null,sx:[],
@@ -209,6 +214,8 @@ function spawnCreepWave(){
   // stalemate eventually breaks instead of grinding forever
   const extra=Math.floor(S.creepWave/C.extraPerWaves);
   const hpMul=1+S.creepWave*C.hpPerWave;
+  // every Nth wave both sides also send a miniboss down the lane
+  const bossWave=(S.creepWave%MOBA.siegeLord.everyNWaves===0);
   for(let team=0;team<2;team++){
     const alive=S.en.filter(e=>e.team===team&&!e.struct).length;
     if(alive>=C.maxAlivePerTeam)continue;   // keep entity counts (and snapshots) bounded
@@ -220,9 +227,11 @@ function spawnCreepWave(){
       S.en.push(e); } };
     add('creep',C.meleePerWave+extra);
     add('creepr',C.rangedPerWave+extra);
+    if(bossWave)add('siegelord',1);
   }
   sfxE('boss');
-  toastAll('Creep wave '+S.creepWave+' marching out');
+  toastAll(bossWave?'⚠ BOSS WAVE — siege lords advancing!'
+                   :'Creep wave '+S.creepWave+' marching out');
 }
 
 /* ---------------- bots ----------------
