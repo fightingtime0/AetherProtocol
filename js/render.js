@@ -110,7 +110,7 @@ function render(){
     ctx.fillRect(Math.round(f.x),Math.round(f.y),1,1);}
   ctx.globalAlpha=1;
   // enemy bullets
-  const bt=(now()-(V?V.snapT:0))/1000;
+  const bt=bulletLead(); // latency-compensated; identical to checkLocalHits()
   for(const b of eb){
     let bx,by,ci,br;
     if(isHost){bx=b.x;by=b.y;ci=b.ci;br=b.r;}
@@ -144,10 +144,17 @@ function render(){
       ctx.globalAlpha=.55+Math.sin(now()/140)*.15; ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(ex,ey,14*scl,0,TAU);ctx.stroke(); ctx.globalAlpha=1; ctx.lineWidth=1;
     }
+    // Nexus Siege: ring team-owned entities in their side's colour, so
+    // you can tell your own turrets from the enemy's at a glance
+    if(e.team!==undefined&&e.team>=0){
+      ctx.globalAlpha=.5; ctx.strokeStyle=teamColor(e.team); ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(ex,ey,10*scl+3,0,TAU);ctx.stroke(); ctx.globalAlpha=1;
+    }
     const hpp=isHost?e.hp/e.maxhp:e.hpp/100;
     if(hpp<1){const bw=(ET[ti].boss?26:ET[ti].mini?18:10)*Math.max(1,scl*.8);
       ctx.fillStyle='#060810';ctx.fillRect(Math.round(ex-bw/2),Math.round(ey-spr.h*scl/2-4),bw,2);
-      ctx.fillStyle=ET[ti].boss?'#ff4fd8':ET[ti].opt?'#4ef0e8':'#7cff6b';
+      ctx.fillStyle=(e.team!==undefined&&e.team>=0)?teamColor(e.team)
+        :ET[ti].boss?'#ff4fd8':ET[ti].opt?'#4ef0e8':'#7cff6b';
       ctx.fillRect(Math.round(ex-bw/2),Math.round(ey-spr.h*scl/2-4),Math.round(bw*hpp),2);}
   }
   // servitor drones

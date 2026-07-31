@@ -3,7 +3,7 @@
    main.js — boot sequence + game loop.
    Loads all data/*.json registries, then initializes the UI.
    ============================================================ */
-let last=now(), sendAcc=0, snapAcc=0, pruneAcc=0;
+let last=now(), sendAcc=0, snapAcc=0, pruneAcc=0, pingAcc=0;
 function loop(){
   const t=now(); const dt=Math.min(.033,(t-last)/1000); last=t;
   if(mode==='play'){
@@ -12,6 +12,7 @@ function loop(){
       snapAcc+=dt; if(snapAcc>=.05&&conns.length){snapAcc=0;bcast(snap());} // 20Hz snapshots
       pruneAcc+=dt; if(pruneAcc>=2){pruneAcc=0;pruneStalePeers();} }
     if(role==='client'){ sendAcc+=dt;
+      pingAcc+=dt; if(pingAcc>=1){pingAcc=0;pingHost();} // 1Hz RTT probe feeds bulletLead()
       checkLocalHits(); // per-frame: did a bullet/enemy touch ME on MY screen?
       if(sendAcc>=.033&&conns[0]&&conns[0].open){sendAcc=0;                 // 30Hz input
         conns[0].send({t:'in',x:Math.round(myPos.x),y:Math.round(myPos.y),inv:myPos.inv>0?1:0});}}

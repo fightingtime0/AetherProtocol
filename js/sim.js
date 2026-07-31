@@ -205,7 +205,8 @@ function hurt(p,amt){
   p.hp-=amt; sfxE('hurt');
   for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
   if(p.hp<=0){ p.hp=0; p.dead=true; toastAll(p.name+' is down!'); sfxE('down');
-    if(S.persistent) p.respawnAt=now()+((BAL.battleground&&BAL.battleground.respawnDelay)||3)*1000;
+    if(S.moba) p.respawnAt=now()+(MOBA.respawnDelay||6)*1000;
+    else if(S.persistent) p.respawnAt=now()+((BAL.battleground&&BAL.battleground.respawnDelay)||3)*1000;
     else if([...S.players.values()].every(q=>q.dead)) runOver(); }
 }
 // a remote client's own screen decided this bullet/enemy touched them — host
@@ -218,6 +219,7 @@ function applyClientHit(p,kind,id){
   if(kind==='b'){
     const b=S.eb.find(b2=>b2.id===id&&!b2.dead);
     if(!b)return;
+    if(!hostile(b.team,p.team))return; // a client can't be hit by its own side
     b.dead=true;
     if(p.inv>0){ p.surgeT=PB.surge.duration; sfxE('surge');
       for(let i=0;i<5;i++)S.fx.push({x:b.x,y:b.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.3,ci:'#ffd35c'});
@@ -232,6 +234,8 @@ function applyClientHit(p,kind,id){
     if(!S.pvp)return;
     const b=S.pb.find(b2=>b2.id===id&&!b2.dead&&b2.owner!==p.id);
     if(!b)return;
+    const shooter=S.players.get(b.owner);
+    if(shooter&&!hostile(shooter.team,p.team))return; // no friendly fire between allies
     b.dead=true;
     hurt(p,b.dmg*((BAL.battleground&&BAL.battleground.pvpDamageMult)||1));
   }
@@ -356,7 +360,8 @@ function hostUpdate(dt){
   if(me&&!me.dead){ me.x=myPos.x; me.y=myPos.y;
     if(myPos.inv>0)me.inv=Math.max(me.inv,.1); }
   for(const p of S.players.values()){
-    if(S.persistent&&p.dead&&p.respawnAt&&now()>=p.respawnAt){ respawnPersistent(p); continue; }
+    if(S.persistent&&p.dead&&p.respawnAt&&now()>=p.respawnAt){
+      if(S.moba)mobaRespawn(p); else respawnPersistent(p); continue; }
     p.inv=Math.max(0,p.inv-dt);
     p.surgeT=Math.max(0,p.surgeT-dt);
     // co-op support auras from nearby allies
@@ -499,6 +504,7 @@ function hostUpdate(dt){
     // players self-report contact from their own screen (see applyClientHit)
     // so nobody takes a hit that hadn't reached them yet on their own client.
     for(const p of S.players.values()){ if(p.dead||p.id!==myId)continue;
+      if(!hostile(e.team,p.team))continue; // MOBA: don't body-check your own structures
       const d=Math.hypot(e.x-p.x,e.y-p.y);
       if(d<e.r+p.r+1){
         const melee=ET[ETI[e.k]].meleeDash&&e.st===2;
@@ -528,9 +534,14 @@ function hostUpdate(dt){
         if(dd<8)b.dead=true; }
     }else{ b.x+=b.vx*dt; b.y+=b.vy*dt; }
     b.ttl-=dt;
+    // a player's bolts inherit their team, so they pass through friendly
+    // structures instead of shredding their own base
+    const bOwner=S.players.get(b.owner), bTeam=bOwner?bOwner.team:undefined;
     for(const e of S.en){if(b.dead)break;
+      if(!hostile(bTeam,e.team))continue;
       if(e.hp>0&&Math.hypot(e.x-b.x,e.y-b.y)<e.r+b.r+1){
-        damageE(e,b.dmg,b.owner);
+        // nexus aura damage buff, if the owner is standing in their field
+        damageE(e,b.dmg*((bOwner&&bOwner.auraBuffT>0)?1+MOBA.nexus.auraDamage:1),b.owner);
         if(b.slow)e.slowT=1.2;
         if(b.pois){e.poisT=3;e.poisD=Math.max(e.poisD||0,b.pois);e.poisBy=b.owner;}
         if(b.pierce>0)b.pierce--;else b.dead=true;}}
@@ -557,7 +568,16 @@ function hostUpdate(dt){
     // bullet hits against its own local player; remote players' clients detect
     // the overlap against what THEY render (see checkLocalHits/'hit' message)
     // and report it, which is what applyClientHit() replays below.
+    // MOBA: team-tagged bolts also damage hostile structures/creeps. This
+    // is the only place entity-vs-entity fire resolves, and it is skipped
+    // entirely for classic PvE bullets (team === undefined).
+    if(!b.dead&&b.team!==undefined)for(const e of S.en){
+      if(e.hp<=0||!hostile(b.team,e.team))continue;
+      if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+b.r+1){
+        b.dead=true; damageE(e,CB.enemyBulletDamage,undefined,true); break; }
+    }
     if(!b.dead)for(const p of S.players.values()){if(p.dead||p.id!==myId)continue;
+      if(!hostile(b.team,p.team))continue; // friendly fire is off in a match
       if(Math.hypot(b.x-p.x,b.y-p.y)<b.r+p.r){b.dead=true;
         if(p.inv>0){ p.surgeT=PB.surge.duration; sfxE('surge'); // phase surge: absorb a bolt with i-frames
           for(let i=0;i<5;i++)S.fx.push({x:b.x,y:b.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.3,ci:'#ffd35c'}); }
@@ -580,6 +600,7 @@ function hostUpdate(dt){
   S.fx=S.fx.filter(f=>f.l>0);
   S.en=S.en.filter(e=>e.hp>0);
   S.shake=Math.max(0,S.shake-dt);
+  mobaUpdate(dt); // no-op unless this is a Nexus Siege match
   // side objective progress
   if(S.obj&&!S.obj.done){ const o=S.obj;
     o.tLeft-=dt;
@@ -617,7 +638,7 @@ function runOver(){
     c.send({t:'go',wave:S.wave,score:S.score,shards:p?p.shards:0}); }
 }
 function finishRun(wave,score,shards){
-  mode='dead'; sfx('gameover');
+  mode='dead'; musicStop(); sfx('gameover');
   save.shards+=shards;
   if(wave>save.best)save.best=wave;
   save.records=save.records||[];

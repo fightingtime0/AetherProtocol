@@ -97,6 +97,115 @@ function sfxE(n){
     if(t-(sfxBLast[n]||0)>=g&&S.sx.length<10){ sfxBLast[n]=t; S.sx.push(n); }
   }
 }
+/* ============================================================
+   BGM — procedural, no assets, same synthesis approach as the SFX.
+   A lookahead scheduler queues notes slightly ahead of the audio
+   clock (setInterval alone is far too jittery for musical timing).
+   Intensity rises with the wave and spikes for bosses: more layers,
+   faster tempo, brighter lead. Runs on its own gain node so music
+   and effects can be balanced (and muted) independently.
+   ============================================================ */
+let musGain=null, musTimer=0, musStep=0, musNext=0, musOn=false, musInt=0, musIntT=0;
+const MUS_VOL=.22;
+// A minor-ish progression: root note per bar, 4 bars, then loops.
+const MUS_ROOTS=[55,55,73.42,65.41];         // A1 A1 D2 C2
+const MUS_SCALE=[0,3,5,7,10,12,15];          // minor pentatonic-ish offsets (semitones)
+const semi=(f,n)=>f*Math.pow(2,n/12);
+
+function musNote(f,t0,d,v,w,dest){
+  const osc=AC.createOscillator(), g=AC.createGain();
+  osc.type=w; osc.frequency.setValueAtTime(f,t0);
+  g.gain.setValueAtTime(0,t0);
+  g.gain.linearRampToValueAtTime(v,t0+.012);   // tiny attack — avoids clicks
+  g.gain.exponentialRampToValueAtTime(.0001,t0+d);
+  osc.connect(g); g.connect(dest||musGain);
+  osc.start(t0); osc.stop(t0+d+.02);
+}
+function musDrum(t0,v,f0,f1,d){
+  const osc=AC.createOscillator(), g=AC.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(f0,t0);
+  osc.frequency.exponentialRampToValueAtTime(f1,t0+d);
+  g.gain.setValueAtTime(v,t0);
+  g.gain.exponentialRampToValueAtTime(.0001,t0+d);
+  osc.connect(g); g.connect(musGain);
+  osc.start(t0); osc.stop(t0+d+.02);
+}
+function musHat(t0,v){
+  const n=AC.sampleRate*.03, buf=AC.createBuffer(1,n,AC.sampleRate), ch=buf.getChannelData(0);
+  for(let i=0;i<n;i++)ch[i]=(Math.random()*2-1)*(1-i/n);
+  const src=AC.createBufferSource(); src.buffer=buf;
+  const f=AC.createBiquadFilter(); f.type='highpass'; f.frequency.value=6000;
+  const g=AC.createGain(); g.gain.value=v;
+  src.connect(f); f.connect(g); g.connect(musGain);
+  src.start(t0);
+}
+/* one 16th-note step */
+function musSchedule(step,t0){
+  const bar=Math.floor(step/16)%MUS_ROOTS.length, root=MUS_ROOTS[bar];
+  const i=musInt; // 0..1
+  const b=step%16;
+  if(b%4===0) musDrum(t0,.5,150,45,.16);                    // kick on every beat
+  if(i>.25&&b%8===4) musDrum(t0,.28,320,140,.10);           // snare-ish backbeat
+  if(i>.45&&b%2===1) musHat(t0,.05+i*.05);                  // offbeat hats
+  if(b%8===0) musNote(root,t0,.55,.16,'sawtooth');          // bass root
+  if(i>.15&&b%8===6) musNote(semi(root,7),t0,.28,.10,'sawtooth');
+  // arpeggio: denser and brighter as intensity climbs
+  if(i>.3&&b%2===0){
+    const deg=MUS_SCALE[(step*3+bar)%MUS_SCALE.length];
+    musNote(semi(root*4,deg),t0,.16,.045+i*.03,'square');
+  }
+  if(i>.7&&b%4===2){ // high counter-line only when things are hectic
+    const deg=MUS_SCALE[(step*5+1)%MUS_SCALE.length];
+    musNote(semi(root*8,deg),t0,.10,.028,'triangle');
+  }
+}
+function musTick(){
+  if(!AC||!musOn||!musGain)return;
+  const stepDur=(60/(96+musInt*44))/4;   // 96→140 BPM, sixteenths
+  while(musNext<AC.currentTime+.12){     // 120ms lookahead
+    if(musNext<AC.currentTime)musNext=AC.currentTime+.02; // recover from a stalled tab
+    musSchedule(musStep,musNext);
+    musStep++; musNext+=stepDur;
+  }
+}
+/* Intensity from the live sim: wave progress, plus a big lift for bosses.
+   Host reads S, client reads its interpolated view V. */
+function musUpdateIntensity(){
+  let tgt=0;
+  const w=(role==='client'?(V&&V.wave):(S&&S.wave))||0;
+  tgt=Math.min(.75,w*.05);
+  const boss=role==='client'
+    ? !!(V&&[...V.en.values()].some(e=>ET[e.ti]&&ET[e.ti].boss))
+    : !!(S&&S.en.some(e=>e.boss));
+  if(boss)tgt=Math.min(1,tgt+.45);
+  musInt+=(tgt-musInt)*.05; // ease, so a boss dying doesn't cut the music dead
+}
+function musicStart(){
+  audioInit();
+  if(!AC)return;
+  if(!musGain){
+    musGain=AC.createGain();
+    musGain.gain.value=save.mute?0:MUS_VOL;
+    musGain.connect(AC.destination);
+  }
+  if(musOn)return;
+  musOn=true; musStep=0; musInt=0; musNext=AC.currentTime+.1;
+  clearInterval(musTimer);
+  musTimer=setInterval(()=>{musUpdateIntensity();musTick();},25);
+}
+function musicStop(){
+  musOn=false;
+  clearInterval(musTimer); musTimer=0;
+  if(musGain){ // fade out rather than cut, so returning to the title isn't jarring
+    try{ const t=AC.currentTime;
+      musGain.gain.cancelScheduledValues(t);
+      musGain.gain.setValueAtTime(musGain.gain.value,t);
+      musGain.gain.linearRampToValueAtTime(0,t+.35);
+      setTimeout(()=>{if(!musOn&&musGain)musGain.gain.value=save.mute?0:MUS_VOL;},450);
+    }catch(e){}
+  }
+}
 /* soft click on any UI button */
 document.addEventListener('click',e=>{
   if(e.target&&e.target.closest&&e.target.closest('.pxbtn,.chip,.swatch,.dsc'))sfx('click');
@@ -106,5 +215,6 @@ addEventListener('keydown',e=>{
   if(e.code!=='KeyM'||(e.target&&e.target.tagName==='INPUT'))return;
   save.mute=!save.mute; persist();
   if(sfxGain)sfxGain.gain.value=save.mute?0:.5;
+  if(musGain)musGain.gain.value=save.mute?0:MUS_VOL;
   toast(save.mute?'🔇 Sound muted':'🔊 Sound on');
 });

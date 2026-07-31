@@ -43,7 +43,7 @@ function checkLocalHits(){
   if(role!=='client'||!V||myPos.dead)return;
   lerpView(); // ensure e.dx/e.dy reflect *this* frame, same as what render() is about to draw
   const r=BAL.player.hitboxRadius;
-  const bt=(now()-V.snapT)/1000;
+  const bt=bulletLead(); // same value render() draws with — see bulletLead()
   const liveIds=new Set();
   for(const b of V.eb){ // b = [id,x,y,vx,vy,ci,r]
     liveIds.add(b[0]);
@@ -206,7 +206,7 @@ function beginSolo(){
   newSim([{id:0,name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}]);
   const me=S.players.get(0);
   myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
-  V=null; mode='play';
+  V=null; mode='play'; musicStart();
 }
 
 function renderShop(){
@@ -273,6 +273,50 @@ function renderDiffChips(rowId,descId,onChange){
   $(descId).textContent=DIFF().desc;
 }
 
+/* ---------------- Nexus Siege lobby ----------------
+   Mode is host-owned: only the host sees the mode chips, and clients
+   learn it from the roster broadcast. Team is per-player — everyone
+   picks their own side, and the host is authoritative about recording
+   it (clients send 'tm' and wait for the roster to come back). */
+function renderModeChips(){
+  const host=(role==='host');
+  $('lobbyModeBits').classList.toggle('hidden',!host);
+  if(!host)return;
+  const el=$('modeRow'); el.innerHTML='';
+  [['coop','CO-OP'],['siege','NEXUS SIEGE']].forEach(([k,label])=>{
+    const b=document.createElement('button');
+    b.className='chip'+(lobbyMode===k?' sel':'');
+    b.textContent=label;
+    b.onclick=()=>{ lobbyMode=k; renderModeChips(); renderTeamUI(lobby.players); bcastRoster(); };
+    el.appendChild(b);
+  });
+}
+function renderTeamUI(players){
+  const siege=(lobbyMode==='siege');
+  $('lobbyTeamBits').classList.toggle('hidden',!siege);
+  // difficulty is meaningless in a siege — structure HP is fixed in moba.json
+  $('lobbyDiffBits').classList.toggle('hidden',siege||role!=='host');
+  if(!siege)return;
+  const el=$('teamRow'); el.innerHTML='';
+  [0,1].forEach(t=>{
+    const b=document.createElement('button');
+    b.className='chip'+(myTeam===t?' sel':'');
+    b.textContent=teamName(t);
+    b.style.color=teamColor(t);
+    b.onclick=()=>{
+      myTeam=t;
+      if(role==='host'){ const me=lobby.players.find(p=>p.id===myId); if(me)me.team=t; bcastRoster(); renderTeamUI(lobby.players); }
+      else{ if(conns[0]&&conns[0].open)conns[0].send({t:'tm',team:t}); renderTeamUI(players); }
+    };
+    el.appendChild(b);
+  });
+  const list=players||lobby.players||[];
+  const side=t=>list.filter(p=>(p.team||0)===t).map(p=>p.name).join(', ')||'—';
+  $('teamRoster').innerHTML=
+    '<span style="color:'+teamColor(0)+'">'+teamName(0)+':</span> '+side(0)+
+    ' &nbsp;·&nbsp; <span style="color:'+teamColor(1)+'">'+teamName(1)+':</span> '+side(1);
+}
+
 function initUI(){
   $('nameInput').value=save.name||'';
   $('btnStart').onclick=()=>{saveName();renderDiffChips('diffRow','diffDesc');show('scrSetup');};
@@ -299,12 +343,15 @@ function initUI(){
   $('btnMpStart').onclick=()=>{
     role='host';
     show(null); $('hud').classList.remove('hidden');
-    newSim(lobby.players);
+    if(lobbyMode==='siege')newMobaSim(lobby.players); else newSim(lobby.players);
     const me=S.players.get(myId);
-    myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
+    // siege players start at their base; newMobaSim already placed them
+    myPos={x:me.x||WW/2,y:me.y||WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
     bcastRoster();
-    bcast({t:'begin',obstacles,ww:WW,wh:WH,diff:diffKey});
-    mode='play';
+    // each client needs its OWN team back, so send begin per-connection
+    for(const c of conns){ const pi=lobby.players.find(p=>p.id===c._pid);
+      try{c.send({t:'begin',obstacles,ww:WW,wh:WH,diff:diffKey,mode:lobbyMode,team:pi?(pi.team||0):0})}catch(e){} }
+    mode='play'; musicStart();
   };
   $('btnEditor').onclick=()=>{edInit();show('scrEditor');};
   $('btnShop').onclick=()=>{renderShop();show('scrShop');};
@@ -320,11 +367,11 @@ function initUI(){
       const me=S.players.get(myId);
       myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
       bcast({t:'rs',obstacles,ww:WW,wh:WH,diff:diffKey});
-      mode='play';$('hud').classList.remove('hidden');
+      mode='play';musicStart();$('hud').classList.remove('hidden');
     }else beginSolo();
   };
   $('btnDeathShop').onclick=()=>{renderShop();show('scrShop');};
-  $('btnDeathTitle').onclick=()=>{refreshTitle();show('scrTitle');resetNet();role='solo';};
+  $('btnDeathTitle').onclick=()=>{refreshTitle();show('scrTitle');resetNet();role='solo';musicStop();};
   renderDiffChips('diffRow','diffDesc');
   refreshTitle();
 }

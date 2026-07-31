@@ -94,6 +94,15 @@
     <div><button class="pxbtn prime" id="btnConnect">Link up</button></div>
   </div>
   <div id="peerList"></div>
+  <div id="lobbyModeBits" class="hidden">
+    <div class="statline" style="margin-top:8px">MODE</div>
+    <div class="row" id="modeRow"></div>
+  </div>
+  <div id="lobbyTeamBits" class="hidden">
+    <div class="statline" style="margin-top:8px">TEAM</div>
+    <div class="row" id="teamRow"></div>
+    <div id="teamRoster" style="font-size:11px;color:var(--dim);min-height:14px"></div>
+  </div>
   <div id="lobbyDiffBits" class="hidden">
     <div class="statline" style="margin-top:8px">DIFFICULTY</div>
     <div class="row" id="lobbyDiffRow"></div>
@@ -175,6 +184,7 @@
 <script defer src="js/weapons.js"></script>
 <script defer src="js/enemies.js"></script>
 <script defer src="js/sim.js"></script>
+<script defer src="js/moba.js"></script>
 <script defer src="js/net.js"></script>
 <script defer src="js/render.js"></script>
 <script defer src="js/ui.js"></script>

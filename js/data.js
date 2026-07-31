@@ -9,6 +9,7 @@
    ============================================================ */
 let BAL=null;        // balance.json
 let DIFFS={};        // difficulties.json
+let MOBA=null;       // moba.json — Nexus Siege layout + structure tuning
 let CLASSES=[];      // classes.json
 let WPN={};          // weapons.json keyed by id (behavior attached)
 let WKEYS=[];
@@ -124,13 +125,14 @@ async function fetchJson(path){
   return r.json();
 }
 async function loadData(){
-  const [bal,diffs,classes,weapons,enemies,passives,meta,sprites]=await Promise.all([
+  const [bal,diffs,classes,weapons,enemies,passives,meta,sprites,moba]=await Promise.all([
     fetchJson('data/balance.json'),   fetchJson('data/difficulties.json'),
     fetchJson('data/classes.json'),   fetchJson('data/weapons.json'),
     fetchJson('data/enemies.json'),   fetchJson('data/passives.json'),
     fetchJson('data/meta.json'),      fetchJson('data/sprites.json'),
+    fetchJson('data/moba.json'),
   ]);
-  BAL=bal; DIFFS=diffs;
+  BAL=bal; DIFFS=diffs; MOBA=moba;
 
   /* weapons: attach behavior + compat aliases */
   WPN={};

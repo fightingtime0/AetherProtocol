@@ -55,7 +55,9 @@ const context = vm.createContext({
   },
 });
 
-const GAME_FILES = ['util.js', 'sfx.js', 'data.js', 'weapons.js', 'enemies.js', 'sim.js', 'net.js'];
+// moba.js must load before net.js: sim.js/enemies.js/net.js all call into it
+// (hostile(), nearestFoe(), mobaUpdate()) even outside a Nexus Siege match.
+const GAME_FILES = ['util.js', 'sfx.js', 'data.js', 'weapons.js', 'enemies.js', 'sim.js', 'moba.js', 'net.js'];
 for (const f of GAME_FILES) {
   const src = fs.readFileSync(path.join(REPO_ROOT, 'js', f), 'utf8');
   vm.runInContext(src, context, { filename: f });

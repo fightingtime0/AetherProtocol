@@ -7,8 +7,10 @@
    ============================================================ */
 let eidc=1;
 let bidc=1;
-function ebul(x,y,a,sp,ci,r=1.5){ sp*=DIFF().aggression||1;
-  S.eb.push({id:bidc++,x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r,ci,ttl:5}); }
+/* team is undefined for classic PvE fire (hits players only, as always);
+   MOBA structures pass their own team so friendly fire is impossible. */
+function ebul(x,y,a,sp,ci,r=1.5,team){ sp*=DIFF().aggression||1;
+  S.eb.push({id:bidc++,x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r,ci,ttl:5,team}); }
 
 function mkE(k){
   const T=ET[ETI[k]];
@@ -40,7 +42,9 @@ function nearestPlayer(e){
 }
 
 function enemyAct(e,dt){
-  const p=nearestPlayer(e); if(!p)return;
+  // nearestFoe() is identical to nearestPlayer() outside a Nexus Siege
+  // match, so every existing enemy behaves exactly as it did before.
+  const p=nearestFoe(e); if(!p)return;
   const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1,aim=Math.atan2(dy,dx);
   const sm=e.slowT>0?0.45:1; e.slowT=Math.max(0,e.slowT-dt);
   e.cd-=dt;
@@ -122,6 +126,34 @@ function enemyAct(e,dt){
          S.fx.push({x:e2.x,y:e2.y,vx:0,vy:-18,l:.3,ci:'#7cff6b'}); } }
      if(e.cd<=0){ e.cd=1.8; ebul(e.x,e.y,aim,62,2); }
      break;
+   /* ---- MOBA structures (see moba.js) ----
+      All three are team-owned and fire team-tagged bolts, so they can
+      never damage their own side. `p` here is whatever nearestFoe()
+      picked — a hostile player, creep or structure. */
+   case 'nexus':{ const N=MOBA.nexus;
+     if(d<N.range&&e.cd<=0){ e.cd=N.shotInterval;
+       for(let i=-1;i<=1;i++)ebul(e.x,e.y,aim+i*.18,70,4,2,e.team); }
+     break; }
+   case 'laneturret':{ const T=MOBA.turret;
+     if(d<T.range&&e.cd<=0){ e.cd=T.shotInterval;
+       ebul(e.x,e.y,aim,T.bulletSpeed,2,1.5,e.team); }
+     break; }
+   case 'guardian':{ const G=MOBA.baseboss;
+     // patrols a ring around its post, but breaks off to chase anything
+     // hostile that comes inside the leash radius
+     const hd=Math.hypot(e.homeX-e.x,e.homeY-e.y)||1;
+     if(hd>G.leashRadius*1.6){ // dragged too far from its post — walk back
+       e.x+=(e.homeX-e.x)/hd*e.spd*dt; e.y+=(e.homeY-e.y)/hd*e.spd*dt;
+     }else if(d<G.leashRadius){ if(d>50)mv(dx/d,dy/d); } // intruder inside the base — chase
+     else{ // otherwise orbit the post; always runs, including from a standing start
+       e.ph+=dt*G.patrolSpeed;
+       const tx=e.homeX+Math.cos(e.ph)*G.patrolRadius, ty=e.homeY+Math.sin(e.ph)*G.patrolRadius;
+       const ddx=tx-e.x, ddy=ty-e.y, dd=Math.hypot(ddx,ddy)||1;
+       e.x+=ddx/dd*e.spd*sm*dt; e.y+=ddy/dd*e.spd*sm*dt;
+     }
+     if(d<G.range&&e.cd<=0){ e.cd=G.shotInterval;
+       for(let i=-2;i<=2;i++)ebul(e.x,e.y,aim+i*.14,74,3,1.5,e.team); }
+     break; }
    /* ---- bosses ---- */
    case 'herald':
      if(d>52)mv(dx/d,dy/d);

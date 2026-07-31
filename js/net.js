@@ -138,9 +138,11 @@ function snap(){
       Math.round(p.t/p.tMax*100),
       p.orbN||0,p.sabN||0,
       Math.round(p.shield),Math.round(p.shieldMax),
-      Math.round((p.beamAng||0)*100),Math.round(p.beamLen||0)]);
+      Math.round((p.beamAng||0)*100),Math.round(p.beamLen||0),
+      p.team===undefined?-1:p.team]);
   const en=S.en.map(e=>[e.id,e.ti,Math.round(e.x),Math.round(e.y),
-    Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0]);
+    Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0,
+    e.team===undefined?-1:e.team]);
   const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r]);
   const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
@@ -150,7 +152,11 @@ function snap(){
   if(S.obj)ob=[OBJ_TYS.indexOf(S.obj.ty),Math.round(S.obj.prog),Math.round(S.obj.goal),
     Math.max(0,Math.round(S.obj.tLeft)),S.obj.done,Math.round(S.obj.zx),Math.round(S.obj.zy),S.obj.zr];
   const sx=S.sx.splice(0,10); // queued sound events ride along
-  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,ob,sx,pvp:S.pvp?1:0,ts:now()};
+  // Nexus Siege: both nexus HP bars + the winner, for the client HUD
+  let mb=0;
+  if(S.moba){ const n0=S.en.find(e=>e.k==='nexus'&&e.team===0), n1=S.en.find(e=>e.k==='nexus'&&e.team===1);
+    mb=[n0?Math.round(n0.hp/n0.maxhp*100):0, n1?Math.round(n1.hp/n1.maxhp*100):0, S.mobaOver||0]; }
+  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,ob,sx,mb,pvp:S.pvp?1:0,ts:now()};
 }
 function bcast(m){ for(const c of conns){try{c.send(m)}catch(e){}} }
 function sendTo(pid,m){ const c=conns.find(c=>c._pid===pid); if(c){try{c.send(m)}catch(e){}} }
@@ -168,7 +174,7 @@ function applySnap(s){
   V.wave=s.w; V.score=s.sc; V.pvp=!!s.pvp;
   if(s.sx)for(const k of s.sx)sfx(k);
   const seenP=new Set();
-  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen]=a; seenP.add(id);
+  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm]=a; seenP.add(id);
     let p=V.players.get(id);
     if(!p){p={id,dx:x,dy:y};V.players.set(id,p);}
     p.px=p.dx;p.py=p.dy;
@@ -179,17 +185,38 @@ function applySnap(s){
     p.t=tp;p.orbN=orbN||0;p.sabN=sabN||0;
     p.shield=shd||0;p.shieldMax=shdMax||0;
     p.beamAng=(bAng||0)/100;p.beamLen=bLen||0;
+    p.team=(tm===undefined||tm<0)?undefined:tm;
     if(id===myId){myPos.spd=spd;myPos.dcd=dcd/100;myPos.dead=!!p.dead;}}
   for(const id of [...V.players.keys()]) if(!seenP.has(id))V.players.delete(id);
   const seenE=new Set();
-  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd]=a; seenE.add(id);
+  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd,tm]=a; seenE.add(id);
     let e=V.en.get(id);
     if(!e){e={id,ti,dx:x,dy:y};V.en.set(id,e);}
     e.px=e.dx;e.py=e.dy;
     if(Math.hypot(x-e.px,y-e.py)>60){e.px=x;e.py=y;} // warlock/reaper/titan blinks
-    e.tx=x;e.ty=y;e.st=t;e.hpp=hpp;e.flash=fl;e.tel=tel;e.scl=scl||1;e.shielded=!!shd;}
+    e.tx=x;e.ty=y;e.st=t;e.hpp=hpp;e.flash=fl;e.tel=tel;e.scl=scl||1;e.shielded=!!shd;
+    e.team=(tm===undefined||tm<0)?undefined:tm;}
   for(const id of [...V.en.keys()]) if(!seenE.has(id))V.en.delete(id);
   V.eb=s.eb; V.pb=s.pb; V.it=s.it; V.dr=s.dr||[]; V.zn=s.zn||[]; V.obj=s.ob||0;
+  V.mb=s.mb||0; // Nexus Siege HUD: [nexus0 hp%, nexus1 hp%, winner]
+}
+/* ---- latency compensation ----------------------------------------
+   V.snapT is stamped when a snapshot ARRIVES, so anything extrapolated
+   from it is drawn one-way-latency behind where the host already has
+   it. Measuring RTT lets us push bullets forward to roughly where they
+   actually are now. This matters much more since cross-network play
+   started relaying through TURN, which adds a hop to every packet. */
+let netRtt=0; // smoothed round-trip, ms
+function pingHost(){
+  if(role==='client'&&conns[0]&&conns[0].open){try{conns[0].send({t:'pg',c:now()})}catch(e){}}
+}
+/* Single source of truth for "how far has a bullet travelled since the
+   snapshot". render() and checkLocalHits() MUST use the same value, or
+   you get hit by something you can't see yet — the original bug. */
+function bulletLead(){
+  if(!V||!V.snapT)return 0;
+  // cap it: on a stalled link this must not fling bullets across the map
+  return Math.min(.25,((now()-V.snapT)+netRtt/2)/1000);
 }
 function lerpView(){
   // k≤1 interpolates toward the latest snapshot; k up to 1.6 keeps
@@ -226,6 +253,8 @@ const CODE_CHARS='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function mkCode(){let s='';for(let i=0;i<4;i++)s+=CODE_CHARS[irnd(0,CODE_CHARS.length)];return s;}
 let roomCode='';
 let lobby={players:[]};
+let lobbyMode='coop';  // 'coop' | 'siege' — host-owned, mirrored to clients via the roster
+let myTeam=0;          // this client's chosen side in a siege lobby
 let nextPid=1; // never reused — reusing lobby.players.length collided after a mid-game disconnect
 function pidNext(){return nextPid++;}
 function setStatus(s){$('mpStatus').textContent=s;}
@@ -244,8 +273,9 @@ function startHost(){
   $('lobbyDiffBits').classList.remove('hidden'); $('lobbyDiffShow').textContent='';
   renderDiffChips('lobbyDiffRow','lobbyDiffDesc',()=>bcastRoster());
   setStatus('Opening circuit…');
-  conns=[]; nextPid=1;
-  lobby.players=[{id:0,name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}];
+  conns=[]; nextPid=1; myTeam=0;
+  lobby.players=[{id:0,name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls,team:0}];
+  renderModeChips(); renderTeamUI(lobby.players);
   myId=0; updatePeerList();
   openHostPeer();
 }
@@ -294,7 +324,11 @@ function hostOnData(c,d){
   c._lastIn=now();
   if(d.t==='hi'){
     c._pid=pidNext();
-    lobby.players.push({id:c._pid,name:d.name,sprite:d.sprite,meta:d.meta||{},cls:d.cls||CLASSES[0].id});
+    // new allies default to the emptier side so a siege lobby self-balances
+    const n0=lobby.players.filter(p=>(p.team||0)===0).length;
+    const n1=lobby.players.filter(p=>(p.team||0)===1).length;
+    lobby.players.push({id:c._pid,name:d.name,sprite:d.sprite,meta:d.meta||{},cls:d.cls||CLASSES[0].id,
+      team:n1<n0?1:0});
     conns.push(c);
     c.send({t:'wl',id:c._pid,obstacles,ww:WW,wh:WH,diff:diffKey,inGame:mode==='play'});
     updatePeerList(); toast(d.name+' linked in');
@@ -306,7 +340,11 @@ function hostOnData(c,d){
       S.players.set(p.id,p);
       c.send({t:'begin',obstacles,ww:WW,wh:WH,diff:diffKey});
     }
-  }else if(d.t==='in'){ const p=S&&S.players.get(c._pid);
+  }else if(d.t==='tm'){ // ally picked a side in the siege lobby
+    const pi=lobby.players.find(x=>x.id===c._pid);
+    if(pi){ pi.team=(d.team===1)?1:0; updatePeerList(); bcastRoster(); }
+  }else if(d.t==='pg'){ try{c.send({t:'po',c:d.c})}catch(e){} } // RTT probe — echo the client's clock back untouched
+  else if(d.t==='in'){ const p=S&&S.players.get(c._pid);
     if(p&&!p.dead){p.x=clamp(d.x,6,WW-6);p.y=clamp(d.y,6,WH-6);if(d.inv)p.inv=Math.max(p.inv,.1);}}
   else if(d.t==='ck'){ const p=S&&S.players.get(c._pid); if(p)resolvePick(p,d.i); }
   else if(d.t==='dw'){ const p=S&&S.players.get(c._pid); if(p)discardWeapon(p,d.i); }
@@ -329,10 +367,13 @@ function pruneStalePeers(){
     }
   }
 }
-function bcastRoster(){ bcast({t:'ros',players:lobby.players.map(p=>({id:p.id,name:p.name,sprite:p.sprite})),diff:DIFF().name}); }
+function bcastRoster(){ bcast({t:'ros',
+  players:lobby.players.map(p=>({id:p.id,name:p.name,sprite:p.sprite,team:p.team||0})),
+  diff:DIFF().name, mode:lobbyMode}); }
 function startJoin(){
   checkRelay(); // so the join timeout can name the cause instead of guessing
-  role='client';
+  role='client'; myTeam=0; lobbyMode='coop';
+  $('lobbyModeBits').classList.add('hidden'); $('lobbyTeamBits').classList.add('hidden');
   $('hostBits').classList.add('hidden'); $('joinBits').classList.remove('hidden');
   $('lobbyDiffBits').classList.add('hidden'); $('lobbyDiffShow').textContent='';
   $('lobbyTitle').textContent='JOINING';
@@ -374,7 +415,7 @@ function connectTo(code){
       // late event from the discarded one must not clear the new watch
       c.on('close',()=>{ if(conns[0]!==c)return;
         clearLinkWatch(); setStatus('Link severed.'); toast('Disconnected from host');
-        if(mode==='play'){mode='title';show('scrTitle');$('hud').classList.add('hidden');} });
+        if(mode==='play'){mode='title';musicStop();show('scrTitle');$('hud').classList.add('hidden');} });
       c.on('error',()=>{ if(conns[0]!==c)return;
         clearLinkWatch(); setStatus('Link error — try again.');
         offerRetry(()=>connectTo(code)); });
@@ -389,12 +430,18 @@ function clientOnData(c,d){
       setStatus('Linked as ally #'+d.id+'. Waiting for host…');
       if(d.inGame){enterPlayClient();} break;
     case 'ros': clientRoster.clear();
-      d.players.forEach(p=>clientRoster.set(p.id,{name:p.name,img:spriteToCanvas(p.sprite)}));
+      d.players.forEach(p=>clientRoster.set(p.id,{name:p.name,img:spriteToCanvas(p.sprite),team:p.team||0}));
       if(d.diff)$('lobbyDiffShow').textContent='Difficulty: '+d.diff;
       $('peerList').textContent='Linked: '+d.players.map(p=>p.name).join(', ');
+      lobbyMode=d.mode||'coop';
+      renderTeamUI(d.players); // host owns the mode; clients just reflect it
       break;
     case 'begin': obstacles=d.obstacles; if(d.ww){WW=d.ww;WH=d.wh;}
-      if(d.diff&&DIFFS[d.diff])diffKey=d.diff; enterPlayClient(); break;
+      if(d.diff&&DIFFS[d.diff])diffKey=d.diff;
+      lobbyMode=d.mode||'coop'; if(d.team!==undefined)myTeam=d.team;
+      enterPlayClient(); break;
+    case 'po':{ const r=now()-d.c;                 // our own clock both ways — no sync needed
+      netRtt=netRtt?netRtt*.8+r*.2:r; break; }     // EMA: one slow packet shouldn't jerk the lead
     case 'st': applySnap(d); break;
     case 'pk': showPickUI(d.opts,d.dl,d.own); break;
     case 'pkend': hidePickUI(); break;
@@ -406,12 +453,16 @@ function clientOnData(c,d){
   }
 }
 function enterPlayClient(){
-  V=blankView(); mode='play';
-  myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:BAL.player.speed,dcd:BAL.player.dashCooldown,dead:false};
+  V=blankView(); mode='play'; musicStart();
+  // a siege drops you at your own base, not the middle of the map
+  let sx=WW/2, sy=WH/2;
+  if(lobbyMode==='siege'&&MOBA){ const sp=mobaSpawn(myTeam); sx=sp.x; sy=sp.y; }
+  myPos={x:sx,y:sy,inv:0,dashT:0,dashing:0,spd:BAL.player.speed,dcd:BAL.player.dashCooldown,dead:false};
   show(null); $('hud').classList.remove('hidden');
 }
 function resetNet(){ // hard-reset all multiplayer state
   clearLinkWatch(); // no timer may outlive the peer it was watching
+  netRtt=0;         // stale latency from a previous session would mis-lead bullets
   if(peer){try{peer.destroy()}catch(e){}}
   if(conns[0]&&conns[0].socket){try{conns[0].socket.close()}catch(e){}} // Battleground's raw WebSocket, if any
   peer=null; conns=[]; lobby.players=[]; clientRoster.clear();
@@ -441,7 +492,7 @@ function startBattleground(url){
       conn.send({t:'hi',name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}); };
     sock.onmessage=(ev)=>{ let d; try{d=JSON.parse(ev.data);}catch(e){return;} clientOnData(conn,d); };
     sock.onclose=()=>{ conn.open=false; setStatus('Link severed.'); toast('Disconnected from the Battleground');
-      if(mode==='play'){mode='title';show('scrTitle');$('hud').classList.add('hidden');} };
+      if(mode==='play'){mode='title';musicStop();show('scrTitle');$('hud').classList.add('hidden');} };
     sock.onerror=()=>{ setStatus('Connection error — check the server address.'); };
   }catch(e){ setStatus('Could not connect: '+e.message); }
 }
