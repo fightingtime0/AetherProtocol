@@ -89,10 +89,13 @@ function render(){
   for(const z of zns){
     const zx=isHost?z.x:z[0], zy=isHost?z.y:z[1], zr=isHost?z.r:z[2];
     if(!vis(zx,zy,zr+4))continue;
-    ctx.fillStyle='rgba(179,79,255,.12)';
+    // a zone may carry its own colour (the Nanite Virus cloud is green)
+    const zc=isHost?(z.col||'#b34fff'):(z[3]||'#b34fff');
+    ctx.globalAlpha=.12; ctx.fillStyle=zc;
     ctx.beginPath();ctx.arc(zx,zy,zr,0,TAU);ctx.fill();
-    ctx.strokeStyle='rgba(179,79,255,.7)';ctx.lineWidth=1;
+    ctx.globalAlpha=.7; ctx.strokeStyle=zc; ctx.lineWidth=1;
     ctx.beginPath();ctx.arc(zx,zy,zr,0,TAU);ctx.stroke();
+    ctx.globalAlpha=1;
   }
   // objective circle
   const ovr=getObjView();
@@ -213,6 +216,14 @@ function render(){
       const a2=rnd(0,TAU), sp=rnd(10,40);
       S.fx.push({x:bx,y:by,vx:Math.cos(a2)*sp,vy:Math.sin(a2)*sp,
         l:BAL.combat.spark.life||.22,ci:col});
+    }
+    if(isHost&&b.delay>0)continue;               // queued swing head, not out yet
+    if(isHost&&b.shape==='square'){              // flail heads read as solid blocks
+      ctx.fillStyle=col;
+      ctx.fillRect(Math.round(bx-br2),Math.round(by-br2),br2*2,br2*2);
+      ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=1;
+      ctx.strokeRect(Math.round(bx-br2)+.5,Math.round(by-br2)+.5,br2*2-1,br2*2-1);
+      continue;
     }
     if(teamed)bulletMark(bx,by,ci,col,Math.max(1.5,br2*0.8),Math.atan2(bvy,bvx));
     else if(br2>2){                              // chunky projectile

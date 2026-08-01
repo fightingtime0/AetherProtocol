@@ -93,14 +93,30 @@ function newSim(playersInfo,opts){
      // Battleground mode only: pvp = player bullets can hurt other players;
      // persistent = deaths respawn (fresh loadout, random spot) instead of
      // ending the run — see hurt() and respawnPersistent().
-     pvp:!!(opts&&opts.pvp), persistent:!!(opts&&opts.persistent)};
+     pvp:!!(opts&&opts.pvp), persistent:!!(opts&&opts.persistent),
+     training:!!(opts&&opts.training)};
   playersInfo.forEach(pi=>{
     const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
     applyMetaObj(p, pi.id===myId?save.meta:pi.meta);
     S.players.set(pi.id,p);
   });
+  if(S.training){ trainingSetup(); return; }   // sandbox: no waves, no scoring
   nextWave();
   scatterItems(3);
+}
+/* Training range: a ring of dummies that come straight back, so you can read a
+   weapon's damage and rhythm without a wave timer pressuring you. */
+function trainingSetup(){
+  S.wave=1; S.waveDone=true; S.miniSpawned=true; S.spawnQ=[];
+  for(let i=0;i<6;i++)trainingDummy(i);
+}
+function trainingDummy(i){
+  const a=i/6*TAU, R=Math.min(WW,WH)*0.28;
+  const e=mkE('skull');
+  e.x=clamp(WW/2+Math.cos(a)*R,20,WW-20);
+  e.y=clamp(WH/2+Math.sin(a)*R,20,WH-20);
+  e.hp=e.maxhp=4000; e.spd=0; e.dummy=1; e.slot=i;
+  S.en.push(e);
 }
 function scatterItems(n){
   for(let i=0;i<n;i++){
@@ -235,6 +251,13 @@ function advanceServitors(p){
 function onDodge(p){
   if(!p||p.dead)return;
   advanceServitors(p);          // dodging is the swarm's order button
+  // Weapons flagged dodgeAtEnd land their effect when the dash FINISHES, so it
+  // reads as "dodge, then strike" rather than firing from where you started.
+  p.dodgeEndT=BAL.player.dashDuration;
+  // the saber freezes mid-dash and pays it off with a fast full spin
+  if(p.weapons.some(w=>WPN[w.id]&&WPN[w.id].passiveSaber)){
+    p.sabFreeze=BAL.player.dashDuration; p.sabSpin=0;
+  }
   for(const w of p.weapons){
     const def=WPN[w.id]; if(!def||!def.dodge)continue;
     // generic reactions shared by most weapons; the bespoke ones follow
@@ -250,6 +273,7 @@ function onDodge(p){
         pbul({x:p.x,y:p.y,vx:Math.cos(ang+off)*sp,vy:Math.sin(ang+off)*sp,
           dmg,ci:ci||0,r:1.5,owner:p.id,ttl:ttl||1.4});
       } };
+    if(def.dodgeAtEnd)continue;       // resolved by onDodgeEnd() instead
     const base=wDmg(def,w,p);
     const tgt=foeNear(340);
     const aimAt=tgt?Math.atan2(tgt.y-p.y,tgt.x-p.x):rnd(0,TAU);
@@ -261,12 +285,14 @@ function onDodge(p){
                             Math.hypot(e.x-p.x,e.y-p.y)<70)e.slowT=Math.max(e.slowT||0,1.2);
                           break;
       case 'blink':       shoot(aimAt,1,0,320,base*0.9,def.ci); break;
-      case 'lash':        if(tgt)shoot(aimAt,1,0,260,base*1.2,def.ci); break;
+      case 'lash':        // the beam is short-ranged now; the dodge is its reach
+                          pbul({x:p.x,y:p.y,vx:Math.cos(aimAt)*300,vy:Math.sin(aimAt)*300,
+                            dmg:base*1.6,ci:def.ci||2,r:1.5,owner:p.id,ttl:2.6,pierce:2}); break;
       case 'mine':        pbul({x:p.x,y:p.y,vx:0,vy:0,dmg:base*0.3,ci:def.ci||5,r:3,
                             owner:p.id,ttl:4,pierce:0,
                             boom:scaleVal(def.boom,w.lvl)||16,boomDmg:base*0.8,spark:1}); break;
       case 'cloud':       S.zn.push({x:p.x,y:p.y,r:26,dps:base*0.6,start:base*0.6,
-                            dur:2.2,ttl:2.2,owner:p.id}); break;
+                            dur:2.2,ttl:2.2,owner:p.id,col:def.cloudColor}); break;
       case 'wellDrop':    S.zn.push({x:p.x,y:p.y,r:scaleVal(def.radius,w.lvl)||20,
                             dps:base,start:base*0.5,dur:2.5,ttl:2.5,owner:p.id}); break;
       case 'markspot':    if(tgt)S.mk.push({x:tgt.x,y:tgt.y,t:0.5,tMax:0.5,
@@ -278,7 +304,9 @@ function onDodge(p){
       case 'dischargeArc':if(tgt)pbul({x:p.x,y:p.y,vx:Math.cos(aimAt)*220,vy:Math.sin(aimAt)*220,
                             dmg:base*0.7,ci:def.ci||1,r:2,owner:p.id,ttl:1.2,pierce:0,
                             chain:{hops:2,range:def.range||85}}); break;
-      case 'rally':       advanceServitors(p); break;   // already called above; harmless
+      case 'rally':       break;   // advanceServitors() already ran at the top of
+                                  // onDodge; calling it again advanced the posture
+                                  // TWICE and snapped it straight back to guard
       case 'boomerangThrow':
                           pbul({x:p.x,y:p.y,vx:Math.cos(aimAt)*200,vy:Math.sin(aimAt)*200,
                             dmg:base*0.8,ci:def.ci||4,r:2,owner:p.id,ttl:2.4,pierce:6,
@@ -297,7 +325,6 @@ function onDodge(p){
                             S.shake=Math.max(S.shake,.18); } break;
       case 'snap':        if(tgt){ const dmg=base*1.1;
                             if(tgt.weapons)hurt(tgt,dmg,p.id); else damageE(tgt,dmg,p.id);
-                            p.hp=Math.min(p.maxhp,p.hp+dmg*(def.healFrac||0.3));
                             S.ar.push({x1:p.x,y1:p.y,x2:tgt.x,y2:tgt.y,l:0.25}); } break;
     }
     if(def.dodge==='hurl'){
@@ -315,12 +342,32 @@ function onDodge(p){
       }
       sfxE('wOrbit',p.x,p.y);
     }else if(def.dodge==='ghost'){
-      // Afterimages: the blades keep printing copies of themselves along the
-      // dash for as long as the dodge lasts, rather than dropping a few
-      // scattered blobs. sabGhostT is spent down in hostUpdate().
-      p.sabGhostT=BAL.player.dashDuration;
-      p.sabGhostW=w.id;
+      // handled by the freeze + finisher spin set up in onDodge()
       sfxE('wSaber',p.x,p.y);
+    }
+  }
+}
+
+/* Fired when the dash finishes. Weapons with dodgeAtEnd put their area here
+   so the payoff lands where the dodge PUT you, not where it began. */
+function onDodgeEnd(p){
+  if(!p||p.dead)return;
+  for(const w of p.weapons){
+    const def=WPN[w.id]; if(!def||!def.dodgeAtEnd)continue;
+    const base=wDmg(def,w,p);
+    if(def.dodge==='whirl'){
+      // a full ring of square heads slammed down around the landing point
+      const n=8;
+      for(let i=0;i<n;i++){ const a2=i/n*TAU;
+        pbul({x:p.x+Math.cos(a2)*(def.reach||36),y:p.y+Math.sin(a2)*(def.reach||36),
+          vx:0,vy:0,dmg:base*0.7,ci:def.ci||3,r:4,owner:p.id,
+          ttl:0.35,pierce:0,spark:1,shape:'square'}); }
+      sfxE('wFlail',p.x,p.y);
+    }else if(def.dodge==='stomp'){
+      // delayed stomp: a mark that detonates a beat after you land
+      const r=scaleVal(def.radius,w.lvl)*1.2||48;
+      S.mk.push({x:p.x,y:p.y,t:0.45,tMax:0.45,r0:r*1.8,r,dmg:base*0.9,owner:p.id});
+      sfxE('wQuake',p.x,p.y);
     }
   }
 }
@@ -426,6 +473,7 @@ function hurt(p,amt,srcId,dot){
     p.lastHitBy=undefined;
     if(S.moba) p.respawnAt=now()+(MOBA.respawnDelay||6)*1000;
     else if(S.persistent) p.respawnAt=now()+((BAL.battleground&&BAL.battleground.respawnDelay)||3)*1000;
+    else if(S.training){ p.dead=false; p.hp=p.maxhp; p.inv=2; } // sandbox: you get back up
     else if([...S.players.values()].every(q=>q.dead)) runOver(); }
 }
 // a remote client's own screen decided this bullet/enemy touched them — host
@@ -524,6 +572,9 @@ function genOpts(p){
     }
   }
   PASSIVES.forEach(ps=>{ if(ps.mp&&S.players.size<2)return;
+    // Charge-economy relics come in exclusive styles. Take one and the whole
+    // family stops appearing — no accidental mixing of incompatible builds.
+    if(ps.style&&p.energyStyle)return;
     // bots never even see the T-charge specials or Glass Reactor, so a roll
     // of three unsafe passives can't force one on them
     if(p.bot&&!botSafePassive(ps))return;
@@ -549,7 +600,7 @@ function optView(o){
 function applyOpt(p,o){
   if(o.t==='up')o.w.lvl++;
   else if(o.t==='new')p.weapons.push({id:o.k,lvl:1,rar:o.rar,cd:0});
-  else o.ps.f(p);
+  else { if(o.ps.style)p.energyStyle=o.ps.style; o.ps.f(p); }
 }
 function ownedView(p){return p.weapons.map(w=>({g:WPN[w.id].g,n:WPN[w.id].n,lvl:w.lvl,rar:w.rar}));}
 function startPick(p,keepDeadline){
@@ -615,6 +666,11 @@ function hostUpdate(dt){
   for(const p of S.players.values()){
     if(S.persistent&&p.dead&&p.respawnAt&&now()>=p.respawnAt){
       if(S.moba)mobaRespawn(p); else respawnPersistent(p); continue; }
+    // Training range: you always get back up, however you went down. Doing
+    // this here rather than only inside hurt() means nothing can strand you
+    // dead in a sandbox that has no respawn timer.
+    if(S.training&&p.dead){ p.dead=false; p.hp=p.maxhp; p.inv=2; p.respawnAt=0;
+      if(p.id===myId)myPos.dead=false; }
     p.inv=Math.max(0,p.inv-dt);
     p.surgeT=Math.max(0,p.surgeT-dt);
     p.slowT=Math.max(0,(p.slowT||0)-dt);   // gravity-well drag decays
@@ -643,13 +699,17 @@ function hostUpdate(dt){
     if(!(p.tMax>=TMIN))p.tMax=TMIN;
     if(!(p.t>=0))p.t=0;                       // NaN guard
     if(p.tLeak>0&&!p.tLock) p.t=Math.max(0,p.t-p.tLeak*dt);
-    if(p.tGenerator){
-      p.t=Math.min(p.tMax,p.t+PB.t.genRate*p.st.tRchM*dt); p.tLock=false;
+    if(p.tGenerator&&!p.tLock){
+      p.t=Math.min(p.tMax,p.t+PB.t.genRate*p.st.tRchM*dt);
     }else if(p.tLock){
       const rchMult=p.tOverclock?4:1;
       p.t+=Math.max(PB.t.rechargeRate*rchMult*p.st.tRchM,TMIN*.25)*dt; // always makes progress
       if(p.t>=p.tMax){p.t=p.tMax;p.tLock=false;}
     }
+    // One rule for every build: the instant charge drops below 1 the cell goes
+    // into reload. Trickle-regen relics no longer dodge the lockout, they just
+    // refill faster once it starts.
+    if(p.t<1&&!p.tLock){ p.t=0; p.tLock=true; }
     if(p.tLock){
       p.tLockT=(p.tLockT||0)+dt;
       if(p.tLockT>TMAXLOCK){ p.t=p.tMax; p.tLock=false; p.tLockT=0;
@@ -720,16 +780,29 @@ function hostUpdate(dt){
         sfxE(def.sfx||(def.rt==='t'?'shootT':'shoot'),p.x,p.y); // per-weapon voice
       }
     }
-    p.sabA=(p.sabA||0)+dt*CB.saber.spinSpeed;
+    /* Saber motion during a dodge: the blades HOLD still through the dash —
+       reading as the sword being dragged forward — then snap through one fast
+       full revolution as a finisher. sabSpin counts down that revolution. */
+    if(p.sabFreeze>0){
+      p.sabFreeze-=dt;
+      if(p.sabFreeze<=0){ p.sabFreeze=0; p.sabSpin=CB.saber.finisherTime||0.22; }
+    }else if(p.sabSpin>0){
+      p.sabSpin-=dt;
+      p.sabA=(p.sabA||0)+dt*(TAU/(CB.saber.finisherTime||0.22));
+      if(p.sabSpin<=0)p.sabSpin=0;
+    }else{
+      p.sabA=(p.sabA||0)+dt*CB.saber.spinSpeed;
+    }
     /* AETHER SABER — discrete strikes, not a continuous grind.
        Every tickInterval the blades land one real hit on each target in
        their arc, each hit costing charge. Bolts the blades deflect feed
        p.sabCharge, which is added to (and consumed by) the next strike,
        up to a cap — so parrying a barrage sets up a big swing. */
+    if(p.dodgeEndT>0){ p.dodgeEndT-=dt; if(p.dodgeEndT<=0){ p.dodgeEndT=0; onDodgeEnd(p); } }
     p.sabTick=Math.max(0,(p.sabTick||0)-dt);
     /* saber afterimages — one set per frame for the length of the dash, each
        a stationary pierce-0 blade so it lands exactly one instance */
-    if(p.sabGhostT>0){
+    if(false&&p.sabGhostT>0){   // superseded by the freeze + finisher spin
       p.sabGhostT-=dt;
       const G=CB.saber, gw=p.weapons.find(w=>w.id===p.sabGhostW)||p.weapons[0];
       if(gw&&WPN[gw.id]){
@@ -1001,6 +1074,7 @@ function hostUpdate(dt){
       } } }
   // player bullets
   for(const b of S.pb){
+    if(b.delay>0){ b.delay-=dt; continue; }   // queued swing head, not live yet
     if(b.home){ let bt=null,bd=1e9;
       const homeOwner=S.players.get(b.owner);
       for(const e of S.en){ if(homeOwner&&!hostile(homeOwner.team,e.team))continue; // homing must not chase allies
@@ -1168,6 +1242,15 @@ function hostUpdate(dt){
   S.en=S.en.filter(e=>e.hp>0);
   S.shake=Math.max(0,S.shake-dt);
   mobaUpdate(dt); // no-op unless this is a Nexus Siege match
+  if(S.training){
+    // keep the ring stocked; a dummy that dies is replaced a beat later
+    S.trainT=(S.trainT||0)-dt;
+    if(S.en.filter(e=>e.dummy).length<6&&S.trainT<=0){
+      S.trainT=1.2;
+      const used=new Set(S.en.filter(e=>e.dummy).map(e=>e.slot));
+      for(let i=0;i<6;i++) if(!used.has(i)){ trainingDummy(i); break; }
+    }
+  }
   // side objective progress
   if(S.obj&&!S.obj.done){ const o=S.obj;
     o.tLeft-=dt;
@@ -1185,7 +1268,7 @@ function hostUpdate(dt){
   for(const p of S.players.values())
     if(p.pickOpts&&now()>=p.pickUntil) resolvePick(p,0);
   // wave clear (optional enemies don't block)
-  if(!S.waveDone&&!S.spawnQ.length&&!S.en.some(e=>!e.opt)){
+  if(!S.training&&!S.waveDone&&!S.spawnQ.length&&!S.en.some(e=>!e.opt)){
     S.waveDone=true; S.eb.length=0;
     S.score+=S.wave*BAL.economy.waveClearScore;
     if(S.obj&&!S.obj.done){

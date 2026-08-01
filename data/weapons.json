@@ -270,7 +270,7 @@
   {
     "id": "venom",
     "glyph": "\u2620",
-    "name": "Nanite Coil",
+    "name": "Nanite Virus",
     "type": "aimed",
     "resource": "t",
     "cost": 3,
@@ -294,7 +294,8 @@
     "spreadStep": 0.14,
     "ci": 4,
     "sfx": "wVenom",
-    "dodge": "cloud"
+    "dodge": "cloud",
+    "cloudColor": "#7cff6b"
   },
   {
     "id": "sigil",
@@ -390,7 +391,7 @@
     "type": "beam",
     "resource": "t",
     "cost": 6.2,
-    "desc": "Continuous laser, {dmg} dmg per tick while charge lasts",
+    "desc": "Short continuous lance, {dmg} per tick",
     "cd": {
       "base": 0.22
     },
@@ -398,7 +399,7 @@
       "base": 11.4,
       "perLvl": 0.08
     },
-    "range": 220,
+    "range": 110,
     "width": 3,
     "sfx": "wBeam",
     "dodge": "lash"
@@ -485,7 +486,10 @@
     "ci": 3,
     "spark": 1,
     "dodge": "whirl",
-    "sfx": "wFlail"
+    "sfx": "wFlail",
+    "shape": "square",
+    "swingStep": 0.045,
+    "dodgeAtEnd": true
   },
   {
     "id": "prism",
@@ -546,11 +550,11 @@
   {
     "id": "leech",
     "glyph": "\u2307",
-    "name": "Leech Tendril",
+    "name": "Arc Tendril",
     "type": "leech",
     "resource": "t",
     "cost": 6,
-    "desc": "Latches on for {dmg}/s and heals you for part of it",
+    "desc": "Short electric tether, {dmg}/s to whatever it latches onto",
     "cd": {
       "base": 0.3
     },
@@ -558,8 +562,8 @@
       "base": 13,
       "perLvl": 0.16
     },
-    "range": 90,
-    "healFrac": 0.3,
+    "range": 55,
+    "healFrac": 0,
     "ci": 4,
     "dodge": "snap",
     "sfx": "wLeech"
@@ -588,6 +592,7 @@
     "ci": 0,
     "spark": 1,
     "dodge": "stomp",
-    "sfx": "wQuake"
+    "sfx": "wQuake",
+    "dodgeAtEnd": true
   }
 ]

@@ -25,6 +25,40 @@ Deeper background, the forward plan and the operational gotchas live in
 
 ---
 
+## <2026-08-01 07:20 / session 1 / update #12> - flail swing, dodge-at-end, energy styles, training range
+
+**Changed**
+- **Flail**: square heads that appear **one at a time** across the arc (a swing,
+  not a row of blocks), and its dodge area now lands **when the dash ends**.
+- **Dodge-at-end phase**: `onDodgeEnd()` resolves weapons flagged `dodgeAtEnd`,
+  so the payoff lands where the dodge *put* you. Quake now leaves a **delayed**
+  stomp there.
+- **Saber dodge** replaced: the blades **hold still** through the dash, then
+  snap through one fast full revolution as a finisher. (The afterimage trail
+  from #11 is gone.)
+- **Arc Tendril** (was Leech): shorter reach, **no lifesteal**.
+- **Beam** is short-range now; its dodge fires the long-range shot instead.
+- **Energy**: below 1 charge it **always** reloads, whatever the regen relic.
+  Charge relics carry exclusive `style` tags — take one and the entire family
+  stops appearing.
+- **Nanite Coil → Nanite Virus**, its dodge cloud is green.
+- **Training range**: pick any weapon, level, rarity and relics, then fight
+  respawning dummies. Press **T** in the range to rebuild. Nothing is saved.
+
+**Why / root causes**
+- **Servitors stuck on defence**: the seeker's `rally` dodge called
+  `advanceServitors()` a *second* time, so a Swarmherd's dodge advanced the
+  posture twice and landed straight back on guard.
+- Training revival is done in `hostUpdate`, not only in `hurt()`, so nothing
+  can strand you dead in a sandbox that has no respawn timer.
+
+**Risk**
+- The training range is new UI with no browser testing at all.
+- Exclusive relic styles change build variety significantly — worth checking
+  the pick pool doesn't feel thin once a style is committed.
+
+---
+
 ## <2026-08-01 06:30 / session 1 / update #11> - saber fixes, universal dodge, new weapons, bigger FOV
 
 **Changed**

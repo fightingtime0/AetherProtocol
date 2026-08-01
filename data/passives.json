@@ -1,32 +1,176 @@
 [
-  { "id": "spd",   "glyph": "➤", "name": "Servo Greaves",   "stats": { "spd": 1.10 } },
-  { "id": "hp",    "glyph": "❤", "name": "Bio-Foam Patch",  "stats": { "maxhp": 25 }, "heal": 25 },
-  { "id": "cdr",   "glyph": "⚡", "name": "Overclock Chip",  "stats": { "cdM": 0.88 } },
-  { "id": "dmg",   "glyph": "☄", "name": "Hotshot Rounds",  "stats": { "dmgM": 1.15 } },
-  { "id": "crit",  "glyph": "✸", "name": "Targeting Lens",  "stats": { "crit": 0.10 } },
-  { "id": "reg",   "glyph": "✚", "name": "Nanite Salve",    "stats": { "regen": 1.2 } },
-  { "id": "grd",   "glyph": "◆", "name": "Salvage Drone",   "stats": { "greed": 1.25 } },
-  { "id": "dsh",   "glyph": "✧", "name": "Blink Drive",     "stats": { "dashCd": 0.75 } },
-  { "id": "bsp",   "glyph": "»", "name": "Rail Catalyst",   "stats": { "bspdM": 1.2 } },
-  { "id": "aegis", "glyph": "⛨", "name": "Aegis Field",     "stats": { "shieldMax": 20 } },
-  { "id": "plate", "glyph": "▤", "name": "Ablative Plating","stats": { "armor": 1 } },
-
-  { "id": "tcap",  "glyph": "▣", "name": "Capacitor Bank",
-    "stats": { "tMax": 14 } },
-  { "id": "tgen",  "glyph": "♻", "name": "Flux Generator", "special": "fluxGenerator",
-    "desc": "Trades the empty-lock reload for constant slow trickle regen — never hard-locks again" },
-  { "id": "tover", "glyph": "☢", "name": "Redline Cell", "special": "overclockCell",
-    "desc": "−50% max T-charge · recharges 4× faster once tripped · leaks 2 T/s even sitting idle" },
-  { "id": "tvent", "glyph": "◉", "name": "Vent Capacitor", "special": "ventCapacitor",
-    "desc": "Every kill dumps +2 residual T-charge back into your cell" },
-  { "id": "tghost","glyph": "◌", "name": "Ghost Rounds", "special": "ghostRounds",
-    "desc": "+15% chance any shot costs 0 T-charge (stacks)" },
-  { "id": "tkin",  "glyph": "⇄", "name": "Kinetic Battery", "special": "kineticBattery",
-    "desc": "T-charge regens while you're moving, bleeds away while you stand still" },
-  { "id": "glass", "glyph": "⚠", "name": "Glass Reactor",
-    "stats": { "dmgM": 1.4, "tMax": -9, "dmgTakenM": 1.15 } },
-
-  { "id": "medic", "glyph": "✚", "name": "Field Medic",   "mp": true, "stats": { "auraRegen": 1.5 } },
-  { "id": "rally", "glyph": "⚑", "name": "Rally Beacon",  "mp": true, "stats": { "auraDmg": 0.12 } },
-  { "id": "tithe", "glyph": "◇", "name": "Tithe Circuit", "mp": true, "stats": { "tithe": 0.2 } }
+  {
+    "id": "spd",
+    "glyph": "\u27a4",
+    "name": "Servo Greaves",
+    "stats": {
+      "spd": 1.1
+    }
+  },
+  {
+    "id": "hp",
+    "glyph": "\u2764",
+    "name": "Bio-Foam Patch",
+    "stats": {
+      "maxhp": 25
+    },
+    "heal": 25
+  },
+  {
+    "id": "cdr",
+    "glyph": "\u26a1",
+    "name": "Overclock Chip",
+    "stats": {
+      "cdM": 0.88
+    }
+  },
+  {
+    "id": "dmg",
+    "glyph": "\u2604",
+    "name": "Hotshot Rounds",
+    "stats": {
+      "dmgM": 1.15
+    }
+  },
+  {
+    "id": "crit",
+    "glyph": "\u2738",
+    "name": "Targeting Lens",
+    "stats": {
+      "crit": 0.1
+    }
+  },
+  {
+    "id": "reg",
+    "glyph": "\u271a",
+    "name": "Nanite Salve",
+    "stats": {
+      "regen": 1.2
+    }
+  },
+  {
+    "id": "grd",
+    "glyph": "\u25c6",
+    "name": "Salvage Drone",
+    "stats": {
+      "greed": 1.25
+    }
+  },
+  {
+    "id": "dsh",
+    "glyph": "\u2727",
+    "name": "Blink Drive",
+    "stats": {
+      "dashCd": 0.75
+    }
+  },
+  {
+    "id": "bsp",
+    "glyph": "\u00bb",
+    "name": "Rail Catalyst",
+    "stats": {
+      "bspdM": 1.2
+    }
+  },
+  {
+    "id": "aegis",
+    "glyph": "\u26e8",
+    "name": "Aegis Field",
+    "stats": {
+      "shieldMax": 20
+    }
+  },
+  {
+    "id": "plate",
+    "glyph": "\u25a4",
+    "name": "Ablative Plating",
+    "stats": {
+      "armor": 1
+    }
+  },
+  {
+    "id": "tcap",
+    "glyph": "\u25a3",
+    "name": "Capacitor Bank",
+    "stats": {
+      "tMax": 14
+    }
+  },
+  {
+    "id": "tgen",
+    "glyph": "\u267b",
+    "name": "Flux Generator",
+    "special": "fluxGenerator",
+    "desc": "Trades the empty-lock reload for constant slow trickle regen \u2014 never hard-locks again",
+    "style": "flow"
+  },
+  {
+    "id": "tover",
+    "glyph": "\u2622",
+    "name": "Redline Cell",
+    "special": "overclockCell",
+    "desc": "\u221250% max T-charge \u00b7 recharges 4\u00d7 faster once tripped \u00b7 leaks 2 T/s even sitting idle",
+    "style": "burst"
+  },
+  {
+    "id": "tvent",
+    "glyph": "\u25c9",
+    "name": "Vent Capacitor",
+    "special": "ventCapacitor",
+    "desc": "Every kill dumps +2 residual T-charge back into your cell",
+    "style": "flow"
+  },
+  {
+    "id": "tghost",
+    "glyph": "\u25cc",
+    "name": "Ghost Rounds",
+    "special": "ghostRounds",
+    "desc": "+15% chance any shot costs 0 T-charge (stacks)",
+    "style": "burst"
+  },
+  {
+    "id": "tkin",
+    "glyph": "\u21c4",
+    "name": "Kinetic Battery",
+    "special": "kineticBattery",
+    "desc": "T-charge regens while you're moving, bleeds away while you stand still",
+    "style": "flow"
+  },
+  {
+    "id": "glass",
+    "glyph": "\u26a0",
+    "name": "Glass Reactor",
+    "stats": {
+      "dmgM": 1.4,
+      "tMax": -9,
+      "dmgTakenM": 1.15
+    }
+  },
+  {
+    "id": "medic",
+    "glyph": "\u271a",
+    "name": "Field Medic",
+    "mp": true,
+    "stats": {
+      "auraRegen": 1.5
+    }
+  },
+  {
+    "id": "rally",
+    "glyph": "\u2691",
+    "name": "Rally Beacon",
+    "mp": true,
+    "stats": {
+      "auraDmg": 0.12
+    }
+  },
+  {
+    "id": "tithe",
+    "glyph": "\u25c7",
+    "name": "Tithe Circuit",
+    "mp": true,
+    "stats": {
+      "tithe": 0.2
+    }
+  }
 ]

@@ -69,6 +69,7 @@
     <button class="pxbtn" id="btnEditor">✎ Character</button>
     <button class="pxbtn" id="btnShop">◆ Sanctum</button>
     <button class="pxbtn" id="btnBoard">☰ Records</button>
+    <button class="pxbtn" id="btnTrain">⌾ Training</button>
   </div>
   <div class="statline" style="margin-top:10px">Best wave: <b id="tBest">—</b> · Shards banked: <b id="tShards">0</b></div>
   <div class="keys"><span><kbd>WASD</kbd> move</span><span><kbd>SPACE</kbd> dash</span><span><kbd>M</kbd> mute</span><span>weapons auto-fire</span></div>
@@ -166,6 +167,25 @@
 </div>
 
 <!-- RECORDS -->
+<!-- TRAINING RANGE: pick any weapon at any level, apply any relic, hit dummies -->
+<div id="scrTrain" class="overlay hidden">
+  <h1 style="font-size:20px">TRAINING RANGE</h1>
+  <div class="sub">try any loadout · dummies respawn · nothing is saved</div>
+  <div class="statline">WEAPONS <span style="color:var(--dim)">(click to equip · shift-click to add a slot)</span></div>
+  <div class="row" id="trWpnRow" style="max-width:640px;flex-wrap:wrap"></div>
+  <div class="statline">LEVEL <span id="trLvlShow" class="gold">1</span> ·
+    RARITY <span id="trRarShow" class="cyanc">COMMON</span></div>
+  <div class="row" id="trTuneRow"></div>
+  <div class="statline">RELICS</div>
+  <div class="row" id="trPasRow" style="max-width:640px;flex-wrap:wrap"></div>
+  <div class="statline" id="trLoadout" style="color:var(--dim);max-width:640px"></div>
+  <div style="margin-top:10px">
+    <button class="pxbtn prime" id="btnTrainGo">▶ Enter range</button>
+    <button class="pxbtn" id="btnTrainReset">↻ Reset build</button>
+    <button class="pxbtn" id="btnTrainBack">← Back</button>
+  </div>
+  <div class="note">Press <b>T</b> in the range to come back here and change anything.</div>
+</div>
 <div id="scrBoard" class="overlay hidden">
   <h1 style="font-size:20px">RECORDS</h1>
   <div class="sub">deepest descents on this device</div>

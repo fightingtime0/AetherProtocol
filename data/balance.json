@@ -69,7 +69,8 @@
       "ghostLife": 0.4,
       "ghostRadius": 5,
       "burnLinger": 0.35,
-      "ghostEvery": 0.05
+      "ghostEvery": 0.05,
+      "finisherTime": 0.22
     },
     "drones": {
       "maxPerPlayer": 2,

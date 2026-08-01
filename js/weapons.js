@@ -150,14 +150,18 @@ const BEHAVIORS={
     }
   },
   /* ---- new archetypes ---- */
-  flail(def,p,w,tg){ // weighted chain: a wide arc of stationary hit-boxes
+  flail(def,p,w,tg){
+    /* Weighted chain. The heads appear one after another across the arc
+       (delay:) rather than all at once, so it reads as a quick swing being
+       dragged through instead of a row of blocks popping into existence. */
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), dmg=wDmg(def,w,p);
-    const span=def.arcSpan||1.5, steps=5;
+    const span=def.arcSpan||1.5, steps=6, step=def.swingStep||0.045;
     for(let i=0;i<steps;i++){
       const off=(i/(steps-1)-0.5)*span, ang=a+off;
       pbul({x:p.x+Math.cos(ang)*def.reach,y:p.y+Math.sin(ang)*def.reach,
         vx:0,vy:0,dmg,ci:def.ci||3,r:4,owner:p.id,
-        ttl:def.sweepTime||0.28,pierce:0,spark:wpnSpark(def)});
+        ttl:def.sweepTime||0.28,pierce:0,spark:wpnSpark(def),
+        shape:'square', delay:i*step});
     }
   },
   prism(def,p,w,tg){ // splits into shards where it lands
@@ -178,7 +182,6 @@ const BEHAVIORS={
     if(d>(def.range||90))return;
     const dmg=wDmg(def,w,p)*(BAL.combat.dotTick);
     if(tg.weapons)hurt(tg,dmg,p.id,true); else damageE(tg,dmg,p.id,true);
-    p.hp=Math.min(p.maxhp,p.hp+dmg*(def.healFrac||0.3));
     S.ar.push({x1:p.x,y1:p.y,x2:tg.x,y2:tg.y,l:BAL.combat.chainArc.life});
   },
   quake(def,p,w){ // expanding shockwave centred on you

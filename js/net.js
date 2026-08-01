@@ -154,7 +154,7 @@ function snap(){
     Math.round(m.t*100),Math.round(m.tMax*100)]);
   const ar=S.ar.map(a2=>[Math.round(a2.x1),Math.round(a2.y1),Math.round(a2.x2),Math.round(a2.y2)]);
   const shp=S.shops?S.shops.map(o=>[Math.round(o.x),Math.round(o.y),o.team,o.k==='merc'?0:1,Math.round(o.cd)]):0;
-  const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r)]);
+  const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r),z.col||0]);
   let ob=0;
   if(S.obj)ob=[OBJ_TYS.indexOf(S.obj.ty),Math.round(S.obj.prog),Math.round(S.obj.goal),
     Math.max(0,Math.round(S.obj.tLeft)),S.obj.done,Math.round(S.obj.zx),Math.round(S.obj.zy),S.obj.zr];

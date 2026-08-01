@@ -201,6 +201,69 @@ $('dashbtn').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagat
 $('dashbtn').addEventListener('click',()=>{if(mode==='play')tryDash();});
 
 /* ---------------- screens & wiring ---------------- */
+/* ---------------- training range ----------------
+   A sandbox: no waves, no scoring, dummies that come back. The build is held
+   here rather than in save, so nothing you try leaks into a real run. */
+const train={wpn:'bolt',lvl:1,rar:'c',slots:[],passives:[]};
+const TRAIN_RARS=['c','r','e','l'];
+function renderTrainUI(){
+  const wr=$('trWpnRow'); wr.innerHTML='';
+  WKEYS.forEach(id=>{
+    const def=WPN[id];
+    const b=document.createElement('button');
+    b.className='chip'+(train.wpn===id?' sel':'');
+    b.innerHTML=def.g+' '+def.n;
+    b.onclick=(ev)=>{
+      if(ev.shiftKey){ if(!train.slots.includes(id))train.slots.push(id); }
+      else train.wpn=id;
+      renderTrainUI();
+    };
+    wr.appendChild(b);
+  });
+  const tr=$('trTuneRow'); tr.innerHTML='';
+  const mk=(label,fn)=>{const b=document.createElement('button');
+    b.className='chip'; b.textContent=label; b.onclick=()=>{fn();renderTrainUI();}; tr.appendChild(b);};
+  mk('− LVL',()=>train.lvl=Math.max(1,train.lvl-1));
+  mk('+ LVL',()=>train.lvl=Math.min(9,train.lvl+1));
+  mk('RARITY ▸',()=>{ train.rar=TRAIN_RARS[(TRAIN_RARS.indexOf(train.rar)+1)%TRAIN_RARS.length]; });
+  $('trLvlShow').textContent=train.lvl;
+  $('trRarShow').textContent=RARS[train.rar].n;
+  const pr=$('trPasRow'); pr.innerHTML='';
+  PASSIVES.forEach(ps=>{
+    const n=train.passives.filter(x=>x===ps.id).length;
+    const b=document.createElement('button');
+    b.className='chip'+(n?' selc':'');
+    b.innerHTML=ps.glyph+' '+ps.name+(n?' ×'+n:'');
+    b.title=ps.desc||'';
+    b.onclick=(ev)=>{
+      if(ev.shiftKey){ const i=train.passives.lastIndexOf(ps.id); if(i>=0)train.passives.splice(i,1); }
+      else train.passives.push(ps.id);
+      renderTrainUI();
+    };
+    pr.appendChild(b);
+  });
+  const extra=train.slots.length?(' + '+train.slots.map(i=>WPN[i].n).join(', ')):'';
+  $('trLoadout').textContent='Loadout: '+WPN[train.wpn].n+' Lv'+train.lvl+' '+RARS[train.rar].n+
+    extra+' · '+train.passives.length+' relic(s)';
+}
+function startTraining(){
+  saveName(); resetNet(); role='solo'; myId=0;
+  show(null); $('hud').classList.remove('hidden');
+  newSim([{id:0,name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}],{training:true});
+  const me=S.players.get(0);
+  me.weapons=[{id:train.wpn,lvl:train.lvl,rar:train.rar,cd:0}];
+  train.slots.forEach(id=>me.weapons.push({id,lvl:train.lvl,rar:train.rar,cd:0}));
+  train.passives.forEach(pid=>{ const ps=PASSIVES.find(x=>x.id===pid); if(ps)ps.f(me); });
+  myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:effSpeed(me),dcd:me.st.dashCd,dead:false};
+  V=null; mode='play'; musicStart();
+  toast('Training range — press T to rebuild');
+}
+addEventListener('keydown',e=>{
+  if(e.code!=='KeyT'||(e.target&&e.target.tagName==='INPUT'))return;
+  if(mode==='play'&&S&&S.training){ mode='title'; musicStop();
+    $('hud').classList.add('hidden'); renderTrainUI(); show('scrTrain'); }
+});
+
 function show(id){['scrTitle','scrSetup','scrShop','scrBoard','scrPick','scrDeath','scrEditor','scrLobby'].forEach(s=>$(s).classList.add('hidden'));
   if(id)$(id).classList.remove('hidden');}
 function saveName(){const n=$('nameInput').value.trim().toUpperCase().slice(0,12);
@@ -389,6 +452,11 @@ function initUI(){
   $('btnShop').onclick=()=>{renderShop();show('scrShop');};
   $('btnShopBack').onclick=()=>{show('scrTitle');refreshTitle();};
   $('btnBoard').onclick=()=>{renderBoard();show('scrBoard');};
+  $('btnTrain').onclick=()=>{renderTrainUI();show('scrTrain');};
+  $('btnTrainGo').onclick=()=>startTraining();
+  $('btnTrainBack').onclick=()=>{show('scrTitle');refreshTitle();};
+  $('btnTrainReset').onclick=()=>{ train.slots.length=0; train.passives.length=0;
+    train.lvl=1; train.rar='c'; renderTrainUI(); };
   $('btnBoardBack').onclick=()=>show('scrTitle');
   $('btnAgain').onclick=()=>{
     $('scrDeath').classList.add('hidden');
