@@ -8,6 +8,8 @@
           zone, drone, orbit (passive), saber (passive)
    ============================================================ */
 function pbul(o){ S.pb.push(Object.assign({id:bidc++,r:1.5,ttl:2.4,pierce:0,ci:0,home:0,slow:0},o)); }
+// weapons flagged "spark" in weapons.json throw particles as they fly
+function wpnSpark(def){ return def&&def.spark?1:0; }
 function boom(x,y,r,dmg,owner,col){
   for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-x,e.y-y)<r+e.r) damageE(e,dmg,owner);
   hurtPlayersAt(x,y,r,dmg,owner); // PvP: explosions have to catch players too
@@ -40,7 +42,7 @@ const BEHAVIORS={
       const sp=def.speed*p.st.bspdM;
       pbul({x:p.x,y:p.y,vx:Math.cos(a+off)*sp,vy:Math.sin(a+off)*sp,
         dmg:dmg*(crit?BAL.combat.critMult:1),ci:crit?5:(def.ci||0),
-        r:def.r||1.5, slow:def.slow?1:0, pois, owner:p.id,
+        r:def.r||1.5, slow:def.slow?1:0, pois, owner:p.id, spark:wpnSpark(def),
         boom:def.boom?scaleVal(def.boom,w.lvl):0,
         boomDmg:def.boom?dmg*(def.boomDmgFrac||1):0});
     }
@@ -67,7 +69,7 @@ const BEHAVIORS={
     const d2=Math.max(24,Math.min(Math.hypot(tg.x-p.x,tg.y-p.y),def.maxRange));
     const sp=def.speed*p.st.bspdM, dmg=wDmg(def,w,p);
     pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
-      dmg:dmg*(def.impactFrac||.3),r:def.r||2.5,ci:def.ci||5,
+      dmg:dmg*(def.impactFrac||.3),r:def.r||2.5,ci:def.ci||5,spark:wpnSpark(def),
       ttl:d2/sp,boom:scaleVal(def.boom,w.lvl),boomDmg:dmg,owner:p.id});
   },
   /* Orbiting Fang — now an active summon: costs charge, the fangs orbit
@@ -80,7 +82,7 @@ const BEHAVIORS={
     for(let i=0;i<n;i++){
       pbul({x:p.x,y:p.y,vx:0,vy:0,dmg,r:def.r||2,ci:def.ci||3,owner:p.id,
         ttl:OB.life,pierce:0,
-        orb:1, orbA:base+i/n*TAU, orbR:OB.radius,
+        orb:1, orbA:base+i/n*TAU, orbR:OB.radius, spark:wpnSpark(def),
         boom:scaleVal(def.boom,w.lvl)||OB.boom,
         boomDmg:dmg*(OB.boomDmgFrac||.85)});
     }
@@ -106,7 +108,8 @@ const BEHAVIORS={
     // above the listed dps, so lingering in it is what actually hurts.
     const dur=def.duration||3;
     S.zn.push({x:tg.x,y:tg.y,r:scaleVal(def.radius,w.lvl),
-      dps:wDmg(def,w,p)*(def.rampTo||1), dur, ttl:dur, owner:p.id});
+      dps:wDmg(def,w,p)*(def.rampTo||1), start:def.startDps||0.5,
+      dur, ttl:dur, owner:p.id});
   },
   drone(def,p,w){
     const st2=droneStats(def,w.lvl,w.rar,p);
@@ -149,7 +152,7 @@ const BEHAVIORS={
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), dmg=wDmg(def,w,p), sp=def.speed*p.st.bspdM;
     pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,dmg,ci:def.ci||4,
       r:def.r||2,owner:p.id,pierce:cnt(def.pierce,w.lvl)||20,ttl:def.ttl||3.2,
-      rang:1,outT:def.outT||0.5,rspd:sp*1.15,rt:0,returning:false});
+      rang:1,outT:def.outT||0.5,rspd:sp*1.15,rt:0,returning:false,spark:wpnSpark(def)});
   },
 };
 /* Resolved from hostUpdate once a smite mark's timer expires. */

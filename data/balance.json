@@ -47,7 +47,8 @@
       "spinSpeed": 3.2,
       "life": 6.0,
       "boom": 14,
-      "boomDmgFrac": 0.85
+      "boomDmgFrac": 0.85,
+      "hurlSpeed": 190
     },
     "saber": {
       "reach": 26,
@@ -60,7 +61,13 @@
       "deflectBonus": 3.5,
       "maxDeflectBonus": 28,
       "bulletParry": true,
-      "dps": 16
+      "dps": 16,
+      "relightCost": 6,
+      "dimDps": 0,
+      "ghostCount": 3,
+      "ghostDmgFrac": 0.45,
+      "ghostLife": 0.45,
+      "ghostRadius": 5
     },
     "drones": {
       "maxPerPlayer": 2,
@@ -76,7 +83,13 @@
       "hp": 1,
       "stuckFuse": 3,
       "selfBoomRadius": 18,
-      "selfBoomMult": 2.5
+      "selfBoomMult": 2.5,
+      "modeSeconds": 3,
+      "guardStand": 18,
+      "roamRadius": 34,
+      "shotInterval": 1.1,
+      "shotSpeed": 120,
+      "shotDmgFrac": 0.8
     },
     "contactDamage": {
       "boss": 24,
@@ -98,8 +111,13 @@
       "minVol": 0.12
     },
     "zoneSlow": {
-      "mult": 0.55,
-      "linger": 0.35
+      "mult": 0.9,
+      "linger": 0.3,
+      "minMult": 0.55
+    },
+    "spark": {
+      "chance": 0.5,
+      "life": 0.22
     }
   },
   "waves": {
@@ -150,7 +168,11 @@
   },
   "economy": {
     "metaCostGrowth": 1.85,
-    "waveClearScore": 50
+    "waveClearScore": 50,
+    "sanctumShardMult": {
+      "siege": 1.0,
+      "other": 0.45
+    }
   },
   "battleground": {
     "respawnDelay": 3,

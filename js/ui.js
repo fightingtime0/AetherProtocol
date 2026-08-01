@@ -11,6 +11,9 @@ addEventListener('keyup',e=>keys[e.code]=false);
 function tryDash(){
   if(myPos.dashT>0||myPos.dead)return;
   myPos.dashT=myPos.dcd; myPos.dashing=BAL.player.dashDuration; myPos.inv=BAL.player.dashInvuln;
+  // dodge reactions: host resolves its own immediately, clients flag it for
+  // the next input packet so the host stays the single authority
+  if(role!=='client'){ if(S)onDodge(S.players.get(myId)); } else dodgePending=1;
   sfx('dash');
 }
 function moveLocal(dt){

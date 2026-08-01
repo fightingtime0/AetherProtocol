@@ -1,56 +1,190 @@
 [
   {
-    "id": "arc", "glyph": "☄", "name": "Voltcaster", "cost": 0,
-    "theme": "Sci-fi · overclocked glass-cannon",
+    "id": "arc",
+    "glyph": "\u2604",
+    "name": "Voltcaster",
+    "cost": 0,
+    "theme": "Sci-fi \u00b7 overclocked glass-cannon",
     "weapon": "bolt",
-    "stats": { "dmgM": 1.25, "maxhp": -20 }
+    "stats": {
+      "dmgM": 1.25,
+      "maxhp": -20
+    }
   },
   {
-    "id": "tem", "glyph": "✚", "name": "Aegis Trooper", "cost": 0,
-    "theme": "Sci-fi · shielded bulwark",
+    "id": "tem",
+    "glyph": "\u271a",
+    "name": "Aegis Trooper",
+    "cost": 0,
+    "theme": "Sci-fi \u00b7 shielded bulwark",
     "weapon": "orbit",
-    "stats": { "maxhp": 40, "regen": 1, "spd": 0.90, "armor": 1 }
+    "stats": {
+      "maxhp": 40,
+      "regen": 1,
+      "spd": 0.9,
+      "armor": 1
+    }
   },
   {
-    "id": "hex", "glyph": "✸", "name": "Nanoblade", "cost": 0,
-    "theme": "Sci-fi · corrosive duelist",
+    "id": "hex",
+    "glyph": "\u2738",
+    "name": "Nanoblade",
+    "cost": 0,
+    "theme": "Sci-fi \u00b7 corrosive duelist",
     "weapon": "venom",
-    "stats": { "crit": 0.15, "greed": 1.15 }
+    "stats": {
+      "crit": 0.15,
+      "greed": 1.15
+    }
   },
   {
-    "id": "voi", "glyph": "»", "name": "Voidrunner", "cost": 0,
-    "theme": "Sci-fi · phase skirmisher",
+    "id": "voi",
+    "glyph": "\u00bb",
+    "name": "Voidrunner",
+    "cost": 0,
+    "theme": "Sci-fi \u00b7 phase skirmisher",
     "weapon": "frost",
-    "stats": { "spd": 1.18, "dashCd": 0.70, "maxhp": -15 }
+    "stats": {
+      "spd": 1.18,
+      "dashCd": 0.7,
+      "maxhp": -15
+    }
   },
   {
-    "id": "tec", "glyph": "⚡", "name": "Technomancer", "cost": 0,
-    "theme": "Sci-fi · overclocked artificer",
+    "id": "tec",
+    "glyph": "\u26a1",
+    "name": "Technomancer",
+    "cost": 0,
+    "theme": "Sci-fi \u00b7 overclocked artificer",
     "weapon": "rail",
-    "stats": { "cdM": 0.85, "bspdM": 1.15, "tMax": 20, "shieldMax": 15, "maxhp": -10 }
+    "stats": {
+      "cdM": 0.85,
+      "bspdM": 1.15,
+      "tMax": 20,
+      "shieldMax": 15,
+      "maxhp": -10
+    }
   },
   {
-    "id": "bld", "glyph": "⚔", "name": "Plasma Duelist", "cost": 500,
-    "theme": "Unlock · relentless plasma duelist",
+    "id": "bld",
+    "glyph": "\u2694",
+    "name": "Plasma Duelist",
+    "cost": 500,
+    "theme": "Unlock \u00b7 relentless plasma duelist",
     "weapon": "saber",
-    "stats": { "dmgM": 1.15, "spd": 1.15, "crit": 0.10, "maxhp": -15 }
+    "stats": {
+      "dmgM": 1.15,
+      "spd": 1.15,
+      "crit": 0.1,
+      "maxhp": -15
+    }
   },
   {
-    "id": "nec", "glyph": "☠", "name": "Swarm Engineer", "cost": 650,
-    "theme": "Unlock · master of servitor drones",
+    "id": "nec",
+    "glyph": "\u2620",
+    "name": "Swarm Engineer",
+    "cost": 650,
+    "theme": "Unlock \u00b7 master of servitor drones",
     "weapon": "seeker",
-    "stats": { "droneHpM": 1.6, "greed": 1.2 }
+    "stats": {
+      "droneHpM": 1.6,
+      "greed": 1.2
+    }
   },
   {
-    "id": "art", "glyph": "⦿", "name": "Artillerist", "cost": 800,
-    "theme": "Unlock · walking siege engine",
+    "id": "art",
+    "glyph": "\u29bf",
+    "name": "Artillerist",
+    "cost": 800,
+    "theme": "Unlock \u00b7 walking siege engine",
     "weapon": "bomb",
-    "stats": { "dmgM": 1.2, "maxhp": 25, "tMax": 30, "armor": 1, "spd": 0.90 }
+    "stats": {
+      "dmgM": 1.2,
+      "maxhp": 25,
+      "tMax": 30,
+      "armor": 1,
+      "spd": 0.9
+    }
   },
   {
-    "id": "chr", "glyph": "✹", "name": "Singularity Engineer", "cost": 1000,
-    "theme": "Unlock · bends spacetime itself",
+    "id": "chr",
+    "glyph": "\u2739",
+    "name": "Singularity Engineer",
+    "cost": 1000,
+    "theme": "Unlock \u00b7 bends spacetime itself",
     "weapon": "sigil",
-    "stats": { "cdM": 0.85, "tRchM": 1.4, "dashCd": 0.75 }
+    "stats": {
+      "cdM": 0.85,
+      "tRchM": 1.4,
+      "dashCd": 0.75
+    }
+  },
+  {
+    "id": "war",
+    "glyph": "\u2694",
+    "name": "Bladewarden",
+    "cost": 900,
+    "theme": "Sci-fi \u00b7 parrying duelist",
+    "weapon": "saber",
+    "stats": {
+      "maxhp": 25,
+      "armor": 1,
+      "spd": 1.05,
+      "tRchM": 1.15
+    }
+  },
+  {
+    "id": "orb",
+    "glyph": "\u2726",
+    "name": "Fangbinder",
+    "cost": 900,
+    "theme": "Sci-fi \u00b7 summoner of orbiting fangs",
+    "weapon": "orbit",
+    "stats": {
+      "dmgM": 1.1,
+      "cdM": 0.9,
+      "maxhp": -10
+    }
+  },
+  {
+    "id": "grv",
+    "glyph": "\u25c8",
+    "name": "Riftwright",
+    "cost": 1100,
+    "theme": "Sci-fi \u00b7 zone-control siegebreaker",
+    "weapon": "sigil",
+    "stats": {
+      "tMax": 10,
+      "cdM": 0.85,
+      "spd": 0.95
+    }
+  },
+  {
+    "id": "swm",
+    "glyph": "\u2727",
+    "name": "Swarmherd",
+    "cost": 1100,
+    "theme": "Sci-fi \u00b7 servitor commander",
+    "weapon": "seeker",
+    "stats": {
+      "droneHpM": 1.5,
+      "dmgM": 1.05,
+      "maxhp": 15,
+      "spd": 0.95
+    }
+  },
+  {
+    "id": "rng",
+    "glyph": "\u21f6",
+    "name": "Longshot",
+    "cost": 1300,
+    "theme": "Sci-fi \u00b7 piercing marksman",
+    "weapon": "rail",
+    "stats": {
+      "bspdM": 1.25,
+      "crit": 0.1,
+      "maxhp": -15,
+      "spd": 1.05
+    }
   }
 ]

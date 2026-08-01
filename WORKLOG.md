@@ -25,6 +25,46 @@ Deeper background, the forward plan and the operational gotchas live in
 
 ---
 
+## <2026-08-01 05:40 / session 1 / update #10> - the Arbiter, dodge reactions, servitor overhaul
+
+**Changed**
+- **THE ARBITER** — neutral third faction (`TEAM_WILD=2`). Sweeps corner to
+  corner after creep wave 15, multi-part with four orbiting shards that shield
+  its core. Ignored for 15s it **roots into a hive**: stops moving, spawns its
+  own brood, and becomes a third nexus — killing it in that state ends the
+  match as a double win. Twin independent lances. Drops 6 chests (12 as a hive)
+  and grants XP to the killing team.
+- Gravity well: lower start (0.5) and overall damage, slow softened 0.55 → 0.90
+  but now **stacks** multiplicatively with a floor so it can never fully root.
+- Saber: blades **dim when the charge cell runs dry** and cost charge to
+  relight; a dim blade cannot parry (the PvP half of the request).
+- Dodge reactions: dashing **hurls** orbiting fangs at the nearest foe, and
+  leaves short-lived **ghost blades** that each land one modest hit.
+- Servitors: full posture cycle (guard → hunt → guard → roam), attack hostile
+  players and rival servitors, fire projectiles while roaming, and contribute
+  **no** contact damage once tethered out — only the detonation counts.
+- 5 new classes (12 total), mercenary model + miniboss size, siege lord drops a
+  cache, ranged creeps hit harder, charges move faster, Sanctum pays 45%
+  outside a siege, heavier weapons get chunkier rounds and spark particles.
+
+**Why**
+- Two of the requests conflicted: dimming the saber on its *swing* cooldown
+  suppressed the contact burn added in #9 entirely, since the cooldown starts
+  the instant a burst lands. Dimming is now a **charge** event, not a cadence
+  event — the blade goes out when the cell empties, which is also what makes
+  "it takes energy to relight" mean something.
+- The Arbiter is r=20 against ~8px cover and pinned itself on rocks mid-sweep,
+  so `wild` entities skip obstacle collision.
+
+**Risk**
+- The Arbiter is a large, entirely unplayed system: sweep pacing, hive timing,
+  double-win flow and reward sizes are all first guesses.
+- Servitor posture timings (3s each) and the guard stand-off distance are
+  untuned; a servitor now spends half its cycle near its owner rather than
+  attacking, which may feel passive.
+
+---
+
 ## <2026-08-01 04:40 / session 1 / update #9> - saber rework, fang speed, HUD de-overlap
 
 **Changed**

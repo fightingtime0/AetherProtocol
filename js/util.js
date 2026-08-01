@@ -30,6 +30,7 @@ let myId=0;
 let peer=null, conns=[];   // host: conns list; client: conns[0]
 let cam={x:0,y:0};
 let myUpgrades=[];   // formatted stat deltas for the upgrade HUD (own player only)
+let dodgePending=0;  // client dashed; rides the next input packet
 let picking=null;
 const keys={};
 let touch={active:false,id:-1,ox:0,oy:0,dx:0,dy:0};

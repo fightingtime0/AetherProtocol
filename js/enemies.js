@@ -103,6 +103,40 @@ function structLaser(e,tgt,dt,cfg){
     if(bite(dn))dn.hp-=amt;
   }
 }
+/* Second lance for the Arbiter. Same maths as structLaser but writes to its
+   own lang2/llen2 fields and its own heat, so the two beams ramp and render
+   independently instead of fighting over one set of state. */
+function structLaser2(e,tgt,dt,cfg){
+  const d=Math.hypot(tgt.x-e.x,tgt.y-e.y)||1;
+  if(!cfg.laserDps||d>cfg.laserRange){ e.laser2On=0; e.llen2=0; e.laser2Tgt=undefined; e.laser2Heat=0; return; }
+  const R=MOBA.laserRamp;
+  const tid=(tgt.weapons?'p':tgt.drone?'d':'e')+(tgt.id!==undefined?tgt.id:'?');
+  if(e.laser2Tgt!==tid){ e.laser2Tgt=tid; e.laser2Heat=0; }
+  e.laser2Heat=Math.min(1,(e.laser2Heat||0)+dt/R.time);
+  const heat=R.from+(R.to-R.from)*e.laser2Heat;
+  const aim=Math.atan2(tgt.y-e.y,tgt.x-e.x);
+  e.lang2=aim; e.llen2=Math.min(d,cfg.laserRange); e.laser2On=1;
+  const lx=Math.cos(aim), ly=Math.sin(aim), w=cfg.laserWidth||4;
+  const bite=o=>{ const ex=o.x-e.x, ey=o.y-e.y, proj=ex*lx+ey*ly;
+    if(proj<0||proj>cfg.laserRange+o.r)return false;
+    return Math.abs(ex*ly-ey*lx)<w+o.r; };
+  const span=dotReady2(e,dt);
+  if(!span)return;
+  const amt=cfg.laserDps*heat*span;
+  for(const q of S.players.values()){
+    if(q.dead||!hostile(e.team,q.team))continue;
+    if(q.id!==myId&&!q.bot)continue;
+    if(bite(q))hurt(q,amt,undefined,true);
+  }
+  for(const o of S.en){
+    if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
+    if(bite(o))damageE(o,amt,undefined,true);
+  }
+  for(const dn of S.dr){
+    if(dn.hp<=0||!hostile(e.team,dn.team))continue;
+    if(bite(dn))dn.hp-=amt;
+  }
+}
 function nearestPlayer(e){
   let bp=null,bd=1e9;
   for(const p of S.players.values()){ if(p.dead)continue;
@@ -210,7 +244,7 @@ function enemyAct(e,dt){
        const stop=ranged?C.attackRange:C.meleeRange;
        if(td>stop){ e.x+=Math.cos(ta)*e.spd*sm*dt; e.y+=Math.sin(ta)*e.spd*sm*dt; }
        if(ranged){ if(td<C.attackRange+8&&e.cd<=0){ e.cd=C.shotInterval;
-           ebul(e.x,e.y,ta,C.bulletSpeed,2,1.5,e.team); } }
+           ebul(e.x,e.y,ta,C.bulletSpeed,2,1.5,e.team,C.rangedDamage); } }
        else if(td<=C.meleeRange+2&&e.cd<=0){ // melee creeps jab at point blank
          e.cd=C.shotInterval*.6; ebul(e.x,e.y,ta,120,3,1.5,e.team); }
      }else{
@@ -248,6 +282,51 @@ function enemyAct(e,dt){
          e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt;
        }
      }
+     break; }
+   case 'warden':{ const WB=MOBA.worldBoss, N=MOBA.nexus;
+     // Neutral world boss. Sweeps corner to corner until it roots into its
+     // hive form, then holds position as a third nexus. Twin lances: it
+     // burns TWO separate targets at once, unlike any structure.
+     if(!e.hive&&e.wbTo){
+       const gx=e.wbTo.x-e.x, gy=e.wbTo.y-e.y, gd=Math.hypot(gx,gy)||1;
+       if(gd>8){ e.x+=gx/gd*WB.sweepSpeed*sm*dt; e.y+=gy/gd*WB.sweepSpeed*sm*dt; }
+       else{ e.wbTo={x:WW-e.wbTo.x, y:WH-e.wbTo.y}; } // bounce to the far corner
+     }
+     // twin lasers: pick two distinct victims
+     const picks=[];
+     const first=structFoe(e,N.laserRange);
+     if(first)picks.push(first);
+     if((WB.laserTargets||2)>1){
+       let second=null,bd=N.laserRange*N.laserRange;
+       const cand=(o,ox,oy)=>{ if(o===first)return;
+         const dd=(ox-e.x)**2+(oy-e.y)**2; if(dd<bd){bd=dd;second=o;} };
+       for(const o of S.en){ if(o===e||o.hp<=0||o.wild||!hostile(e.team,o.team))continue;
+         cand(o,o.x,o.y); }
+       for(const q of S.players.values()){ if(q.dead||!hostile(e.team,q.team))continue;
+         cand(q,q.x,q.y); }
+       if(second)picks.push(second);
+     }
+     if(picks.length)structLaser(e,picks[0],dt,N); else { e.laserOn=0; e.llen=0; }
+     if(picks[1])structLaser2(e,picks[1],dt,N);
+     else { e.laser2On=0; e.llen2=0; }
+     // heavy barrage on top
+     if(e.cd<=0&&picks.length){ e.cd=e.hive?0.8:1.2;
+       const ta=Math.atan2(picks[0].y-e.y,picks[0].x-e.x);
+       for(let i=-2;i<=2;i++)ebul(e.x,e.y,ta+i*.16,72,4,2,e.team,N.shotDamage);
+       if(e.hive)for(let i=0;i<12;i++)ebul(e.x,e.y,i/12*TAU+e.ph,46,3,2,e.team,N.shotDamage*.6);
+     }
+     e.ph+=dt*.6;
+     break; }
+   case 'wardshard':{ // orbits the Arbiter and shields it while alive
+     const core=S.en.find(c=>c.id===e.core);
+     if(core&&core.hp>0){
+       e.ph=(e.ph||0)+dt*1.1;
+       const orbR=core.hive?(MOBA.worldBoss.hiveOrbitRadius*0.55):46;
+       const tx=core.x+Math.cos(e.ph)*orbR, ty=core.y+Math.sin(e.ph)*orbR;
+       const ddx=tx-e.x, ddy=ty-e.y, dd=Math.hypot(ddx,ddy)||1;
+       e.x+=ddx/dd*Math.min(dd*6,e.spd*3)*dt; e.y+=ddy/dd*Math.min(dd*6,e.spd*3)*dt;
+     }else mv(dx/d,dy/d,.7);                       // core gone — fight on alone
+     if(e.cd<=0){ e.cd=1.5; ebul(e.x,e.y,aim,74,4,1.5,e.team,MOBA.turret.damage); }
      break; }
    /* ---- MOBA structures (see moba.js) ----
       All three are team-owned and fire team-tagged bolts, so they can
@@ -439,5 +518,7 @@ function enemyAct(e,dt){
        } }
      break;
   }
-  if(e.spd>0||e.st===2) collideObstacles(e);
+  // The Arbiter is far larger than the cover scattered around the lane and
+  // would pin itself on a rock mid-sweep; it simply wades through.
+  if((e.spd>0||e.st===2)&&!e.wild) collideObstacles(e);
 }

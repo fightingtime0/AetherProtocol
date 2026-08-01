@@ -119,7 +119,8 @@ function newMobaSim(playersInfo){
      spawnQ:[],spawnT:0,waveDone:true,miniSpawned:true,over:false,shake:0,
      pvp:true,          // opposing players can shoot each other
      persistent:true,   // death respawns at base instead of ending the run
-     moba:true, mobaOver:0, creepT:MOBA.creepInterval, kills:[0,0]};
+     moba:true, mobaOver:0, creepT:MOBA.creepInterval, kills:[0,0],
+     worldBoss:0, wbWasHive:0, wbLastHitBy:undefined, wbX:0, wbY:0};
   playersInfo.forEach(pi=>{
     const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
     applyMetaObj(p, (pi.id===myId&&!pi.bot)?save.meta:pi.meta);
@@ -180,6 +181,7 @@ function mobaUpdate(dt){
     }
   }
   mobaShopTick(dt);
+  mobaWorldBossTick(dt);
   // creep waves
   S.creepT-=dt;
   if(S.creepT<=0){ S.creepT=MOBA.creepInterval; spawnCreepWave(); }
@@ -280,12 +282,104 @@ function mobaBuyMercs(team){
   const sp=mobaSpawn(team);
   const goalX=team===0?WW*(1-MOBA.positions.nexus):WW*MOBA.positions.nexus;
   for(let i=0;i<SH.mercCount;i++){
-    const e=mkTeamEnt('creep',team,sp.x+rnd(-20,20),sp.y+rnd(-30,30),SH.mercHpMul);
+    const e=mkTeamEnt(SH.mercKind||'creep',team,sp.x+rnd(-20,20),sp.y+rnd(-30,30),SH.mercHpMul);
     e.goalX=goalX; e.goalY=WH/2;
     e.merc=1;
     e.spd*=1.25;
     S.en.push(e);
   }
+}
+
+/* ---------------- THE ARBITER (neutral world boss) ----------------
+   A third faction. TEAM_WILD is neither side, and hostile() already returns
+   true for any mismatched pair, so it fights — and is fought by — everything
+   on the map with no special cases.
+
+   It sweeps the battleground corner to corner. Leave it alone for long
+   enough and it ROOTS, becoming a hive: it stops moving, spawns its own
+   creeps in orbit, and effectively turns into a third nexus. Killing it in
+   that state ends the match as a double win over both sides. */
+const TEAM_WILD=2;
+function mobaSpawnWorldBoss(){
+  const WB=MOBA.worldBoss;
+  const corner=irnd(0,4);
+  const pad=WW*0.18, padY=WH*0.22;
+  const from={x:(corner&1)?WW-pad:pad, y:(corner&2)?WH-padY:padY};
+  const to  ={x:(corner&1)?pad:WW-pad, y:(corner&2)?padY:WH-padY};
+  const boss=mkTeamEnt('warden',TEAM_WILD,from.x,from.y);
+  boss.wbTo=to; boss.wbIdle=0; boss.hive=0; boss.wild=1;
+  S.en.push(boss);
+  S.worldBoss=boss.id;
+  // orbiting shards: the existing multi-part shield logic keys off e.core
+  const parts=(ET[ETI.warden].parts)||[];
+  parts.forEach((pid,i)=>{
+    const sh=mkTeamEnt(pid,TEAM_WILD,from.x,from.y);
+    sh.core=boss.id; sh.orbIdx=i; sh.ph=i/parts.length*TAU; sh.wild=1;
+    S.en.push(sh);
+  });
+  toastAll('⚠⚠ THE ARBITER ENTERS THE FIELD ⚠⚠');
+  sfxE('boss',boss.x,boss.y);
+}
+function mobaWorldBossTick(dt){
+  const WB=MOBA.worldBoss;
+  if(!S.worldBoss){
+    if((S.creepWave||0)>=WB.afterCreepWave)mobaSpawnWorldBoss();
+    return;
+  }
+  const boss=S.en.find(e=>e.id===S.worldBoss);
+  if(!boss){                                   // it died
+    mobaWorldBossDefeated();
+    return;
+  }
+  // untouched for long enough → root into the hive
+  boss.wbIdle=(boss.wbIdle||0)+dt;
+  if(!boss.hive&&boss.wbIdle>=WB.idleToHive){
+    boss.hive=1; boss.spd=0;
+    boss.hp=boss.maxhp=boss.maxhp*1.5;         // rooted, but far harder to remove
+    toastAll('☠ THE ARBITER HAS ROOTED — destroy the hive to end this');
+    sfxE('boss',boss.x,boss.y);
+  }
+  if(boss.hive){
+    boss.hiveT=(boss.hiveT||0)-dt;
+    const brood=S.en.filter(e=>e.k==='wardling'&&e.hp>0).length;
+    if(boss.hiveT<=0&&brood<WB.hiveMaxCreeps){
+      boss.hiveT=WB.hiveCreepEvery;
+      const a=rnd(0,TAU), r=WB.hiveOrbitRadius;
+      const c=mkTeamEnt('wardling',TEAM_WILD,boss.x+Math.cos(a)*r,boss.y+Math.sin(a)*r);
+      c.wild=1; c.hiveOf=boss.id; c.ph=a;
+      S.en.push(c);
+    }
+  }
+}
+/* Any damage resets the idle timer — that is what "if no one attacks it"
+   means, and it is checked in damageE(). */
+function mobaWorldBossPoked(e){
+  if(!S.moba||!S.worldBoss)return;
+  const boss=S.en.find(b=>b.id===S.worldBoss);
+  if(!boss||boss.hive)return;
+  if(e.id===boss.id||e.core===boss.id)boss.wbIdle=0;
+}
+function mobaWorldBossDefeated(){
+  const WB=MOBA.worldBoss;
+  const wasHive=S.wbWasHive;
+  S.worldBoss=0;
+  // clear its retinue
+  for(const e of S.en) if(e.wild&&e.hp>0)e.hp=0;
+  const killer=S.players.get(S.wbLastHitBy);
+  const team=killer?killer.team:undefined;
+  const chests=wasHive?WB.hiveChestsOnDeath:WB.chestsOnDeath;
+  for(let i=0;i<chests;i++)
+    S.it.push({k:2,x:clamp(S.wbX+rnd(-60,60),20,WW-20),y:clamp(S.wbY+rnd(-40,40),20,WH-20)});
+  const xp=wasHive?WB.hiveXpReward:WB.xpReward;
+  if(team!==undefined)
+    for(const q of S.players.values()) if(q.team===team)grantXp(q,xp);
+  toastAll(wasHive
+    ? (teamName(team||0)+' TORE DOWN THE HIVE — double victory!')
+    : (teamName(team||0)+' felled THE ARBITER!'));
+  sfxE('bosskill',S.wbX,S.wbY);
+  // a rooted hive is a third nexus: bringing it down ends the match outright
+  if(wasHive&&!S.mobaOver){ S.mobaOver=(team===undefined?1:team+1); mobaEnd(team||0,true); }
+  S.wbWasHive=0;
 }
 
 /* ---------------- creeps ---------------- */
@@ -361,13 +455,14 @@ function botPick(p){
   }
   resolvePick(p,best<0?0:best);
 }
-function mobaEnd(winner){
+function mobaEnd(winner,doubleWin){
   S.over=true;
+  if(doubleWin)toastAll('DOUBLE VICTORY — the hive fell');
   toastAll(teamName(winner)+' destroyed the enemy nexus!');
   const me=S.players.get(myId);
-  finishRun(S.wave,S.score,me?me.shards:0);
+  finishRun(S.wave,S.score,sanctumShards(me?me.shards:0));
   for(const c of conns){ const p=S.players.get(c._pid);
-    c.send({t:'go',wave:S.wave,score:S.score,shards:p?p.shards:0}); }
+    c.send({t:'go',wave:S.wave,score:S.score,shards:sanctumShards(p?p.shards:0)}); }
 }
 
 /* ---------------- bots (STAGE 4 stub) ----------------

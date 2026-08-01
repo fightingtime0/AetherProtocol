@@ -219,6 +219,45 @@ function objDone(v){
 }
 
 /* ---------------- damage ---------------- */
+/* ---------------- dodge (dash) reactions ----------------
+   Fired when a player dashes. The host owns the consequence for everyone:
+   its own player calls this directly, remote clients flag it on their next
+   input packet. Weapons opt in via a "dodge" key in weapons.json. */
+function onDodge(p){
+  if(!p||p.dead)return;
+  for(const w of p.weapons){
+    const def=WPN[w.id]; if(!def||!def.dodge)continue;
+    if(def.dodge==='hurl'){
+      // fling every orbiting fang at the nearest hostile
+      const sp=BAL.combat.orbit.hurlSpeed||190;
+      for(const b of S.pb){
+        if(!b.orb||b.owner!==p.id||b.dead)continue;
+        let tx=null,ty=null,bd=1e9;
+        for(const e of S.en){ if(e.hp<=0||!hostile(p.team,e.team))continue;
+          const d=(e.x-b.x)**2+(e.y-b.y)**2; if(d<bd){bd=d;tx=e.x;ty=e.y;} }
+        for(const q of foePlayers(p)){
+          const d=(q.x-b.x)**2+(q.y-b.y)**2; if(d<bd){bd=d;tx=q.x;ty=q.y;} }
+        const a=(tx===null)?rnd(0,TAU):Math.atan2(ty-b.y,tx-b.x);
+        b.orb=0; b.vx=Math.cos(a)*sp; b.vy=Math.sin(a)*sp; b.ttl=Math.min(b.ttl,1.4);
+      }
+      sfxE('wOrbit',p.x,p.y);
+    }else if(def.dodge==='ghost'){
+      // leave short-lived ghost blades along the dash that each land ONE
+      // instance of modest damage — stationary, pierce-0 bullets
+      const G=BAL.combat.saber;
+      const n=G.ghostCount||3;
+      const dmg=wDmg(def,w,p)*(G.ghostDmgFrac||0.45);
+      for(let i=0;i<n;i++){
+        const a=(p.sabA||0)+i/n*TAU;
+        pbul({x:p.x+Math.cos(a)*(G.reach*0.6),y:p.y+Math.sin(a)*(G.reach*0.6),
+          vx:0,vy:0,dmg,ci:4,r:G.ghostRadius||5,owner:p.id,
+          ttl:G.ghostLife||0.45,pierce:0,ghost:1});
+      }
+      sfxE('wSaber',p.x,p.y);
+    }
+  }
+}
+
 /* ---------------- PvP damage against PLAYERS ----------------
    Every weapon path except plain projectiles only ever iterated S.en, so
    explosions, beams, zones, drones and the orbit/saber sweeps passed
@@ -241,13 +280,25 @@ function dotReady(holder,dt){
   const span=holder.dotT; holder.dotT=0;
   return span;                       // seconds of damage to release now
 }
+/* Second, independent accumulator — the Arbiter runs two lances at once and
+   they must not share a timer, or one would eat the other's releases. */
+function dotReady2(holder,dt){
+  holder.dot2T=(holder.dot2T||0)+dt;
+  if(holder.dot2T<BAL.combat.dotTick)return 0;
+  const span=holder.dot2T; holder.dot2T=0;
+  return span;
+}
 /* A player's CURRENT movement speed, including any drag from standing in a
    gravity well. Everything that needs to know how fast someone actually
    moves goes through here — the snapshot, and the host's own myPos — so a
    slow can't be applied in one place and forgotten in another. */
 function effSpeed(p){
   const Z=BAL.combat.zoneSlow;
-  return p.st.spd*((p.slowT>0&&Z)?Z.mult:1);
+  if(!Z||!(p.slowT>0))return p.st.spd;
+  // wells STACK: each overlapping field multiplies the drag, down to a floor
+  // so a pile of them can never fully root you
+  const stk=Math.max(1,p.slowStk||1);
+  return p.st.spd*Math.max(Z.minMult,Math.pow(Z.mult,stk));
 }
 const NO_FOES=[];
 function foePlayers(src){
@@ -343,6 +394,11 @@ function applyClientHit(p,kind,id){
 }
 function toastAll(m){ toast(m); bcast({t:'ts',m}); }
 function damageE(e,dmg,owner,quiet){
+  if(S&&S.moba&&e&&e.wild){          // the Arbiter: track aggression + last hitter
+    mobaWorldBossPoked(e);
+    if(owner!==undefined)S.wbLastHitBy=owner;
+    if(e.id===S.worldBoss){ S.wbX=e.x; S.wbY=e.y; S.wbWasHive=e.hive?1:0; }
+  }
   // Friendly fire is blocked HERE, at the one choke point every damage
   // source funnels through — bullets, booms, beams, chain lightning,
   // orbiting fangs, sabers, drones, zones and poison ticks all land in
@@ -376,6 +432,8 @@ function damageE(e,dmg,owner,quiet){
     for(let i=0;i<12;i++)S.fx.push({x:e.x,y:e.y,vx:rnd(-60,60),vy:rnd(-60,60),l:.5,ci:e.boss?'#ffd35c':'#ff4fd8'});
     if(ET[ETI[e.k]].interlude){ S.it.push({k:2,x:e.x,y:e.y}); S.it.push({k:1,x:e.x+10,y:e.y,v:20});
       toastAll('Obelisk shattered — chest dropped!'); }
+    if(S.moba&&e.k==='siegelord'&&MOBA.siegeLord.dropsChest){ // boss creep pays out
+      S.it.push({k:2,x:e.x,y:e.y}); S.it.push({k:1,x:e.x+10,y:e.y,v:25}); }
     if(e.boss){ S.it.push({k:2,x:e.x,y:e.y});
       if(e.k==='titan'){ S.it.push({k:2,x:e.x+14,y:e.y}); S.it.push({k:1,x:e.x-14,y:e.y,v:60}); } }
   }
@@ -602,7 +660,26 @@ function hostUpdate(dt){
        p.sabCharge, which is added to (and consumed by) the next strike,
        up to a cap — so parrying a barrage sets up a big swing. */
     p.sabTick=Math.max(0,(p.sabTick||0)-dt);
+    /* Blade ignition. After a swing the blades go DIM for the cooldown: no
+       burst, no burn, and — the multiplayer half of this — no parry either,
+       so a dim saber cannot swat incoming PvP fire. Relighting costs charge,
+       so an empty cell leaves you holding an unlit hilt until it recovers.
+       p.sabLit rides the snapshot so remote clients dim them too. */
+    if(p.sabN>0){
+      // The blade dims when the CELL RUNS DRY, not between swings — dimming on
+      // the swing cooldown would suppress the contact burn entirely, since the
+      // cooldown starts the instant a burst lands.
+      if(!p.sabLit){
+        const cost=CB.saber.relightCost||0;
+        if(p.t>=cost&&!p.tLock){
+          p.t=Math.max(0,p.t-cost); p.sabLit=true;
+          sfxE('sabCharge',p.x,p.y);
+          if(p.t<=0){p.t=0;p.tLock=true;}
+        }
+      }
+    }else p.sabLit=false;
     for(const w of p.weapons){ if(!WPN[w.id].passiveSaber)continue;
+      if(!p.sabLit)break;                    // unlit blades do nothing
       const n=sabCountW(w);
       const inArc=(ox,oy,orad)=>{
         const dd=Math.hypot(ox-p.x,oy-p.y);
@@ -645,7 +722,7 @@ function hostUpdate(dt){
         p.sabTick=CB.saber.tickInterval;
         p.sabCharge=0;                        // banked parry damage is spent
         p.t=Math.max(0,p.t-CB.saber.energyPerHit);
-        if(p.t<=0){p.t=0;p.tLock=true;}
+        if(p.t<=0){p.t=0;p.tLock=true;p.sabLit=false;} // ran dry — blade goes out
         sfxE('wSaber',p.x,p.y);
       }
       /* Sustained burn, applied per frame WHILE touching — deliberately not
@@ -660,48 +737,95 @@ function hostUpdate(dt){
           if(isPlayer)hurt(o,tickDmg,p.id,true); else damageE(o,tickDmg,p.id,true);
         }
         p.t=Math.max(0,p.t-CB.saber.energyPerHit*dt/CB.saber.tickInterval);
-        if(p.t<=0){p.t=0;p.tLock=true;}
+        if(p.t<=0){p.t=0;p.tLock=true;p.sabLit=false;} // ran dry mid-burn
       }
     }
   }
-  // servitor drones: seek & ram foes, soak enemy fire
+  /* ---------------- servitors ----------------
+     A servitor now behaves like a friendly creep with a rotating posture
+     instead of a dumb chaser:
+       guard  → sits between its owner and the nearest threat, body-blocking
+       hunt   → closes and rams
+       roam   → drifts near the owner and shoots
+     It targets hostile ENTITIES, hostile PLAYERS and rival SERVITORS alike.
+     Out past the tether it stops contributing damage entirely and only its
+     detonation counts — see the fuse below. */
   const DR=CB.drones;
   for(const dn of S.dr){
-    let tg=null,bd=1e9;
-    const dOwner=S.players.get(dn.owner);
-    // Only hunt inside the tether. Without this a servitor locks onto the
-    // nearest hostile ANYWHERE — on a siege map that's a structure across
-    // the field — walks itself out of range and suicides on repeat.
-    const reach=DR.maxRange*DR.maxRange;
-    for(const e of S.en){ if(e.hp<=0)continue;
-      if(dOwner&&!hostile(dOwner.team,e.team))continue; // servitors ignored team and chased friendly creeps
-      if(dOwner&&((e.x-dOwner.x)**2+(e.y-dOwner.y)**2)>reach)continue;
-      const dd=(e.x-dn.x)**2+(e.y-dn.y)**2; if(dd<bd){bd=dd;tg=e;} }
-    // Servitors are tethered: past maxRange from their owner they stop dead
-    // rather than chasing across the map, and only move again once the owner
-    // comes back within reach. dn.stuck drives the rendering cue.
     const owner=S.players.get(dn.owner);
+    const dOwner=owner;
+    const reach=DR.maxRange*DR.maxRange;
+    const inTether=o=>!owner||((o.x-owner.x)**2+(o.y-owner.y)**2)<=reach;
+    // nearest hostile of ANY kind, inside the owner's tether
+    let tg=null,bd=1e9;
+    const consider=(o,ox,oy)=>{ const dd=(ox-dn.x)**2+(oy-dn.y)**2;
+      if(dd<bd){bd=dd;tg=o;} };
+    for(const e of S.en){ if(e.hp<=0)continue;
+      if(dOwner&&!hostile(dOwner.team,e.team))continue;
+      if(!inTether(e))continue; consider(e,e.x,e.y); }
+    for(const q of S.players.values()){ if(q.dead||q.id===dn.owner)continue;
+      if(!S.pvp)continue;                               // only a target where players fight
+      if(dOwner&&!hostile(dOwner.team,q.team))continue;
+      if(!inTether(q))continue; consider(q,q.x,q.y); }
+    for(const o of S.dr){ if(o===dn||o.hp<=0)continue;  // rival swarms brawl
+      if(dOwner&&!hostile(dOwner.team,o.team))continue;
+      if(o.owner===dn.owner)continue;
+      if(!inTether(o))continue; consider(o,o.x,o.y); }
+
     const ownDist=owner?Math.hypot(owner.x-dn.x,owner.y-dn.y):1e9;
     dn.stuck=ownDist>DR.maxRange;
     if(dn.stuck){
-      // out of tether: holds position and burns a 3-second fuse, then
-      // detonates. dn.fuse drives the countdown drawn over it.
+      // Out of tether: holds position, contributes NO contact damage, and
+      // burns a 3-second fuse. Only the detonation still counts.
       dn.stuckT=(dn.stuckT||0)+dt;
       dn.fuse=Math.max(0,Math.ceil((DR.stuckFuse||3)-dn.stuckT));
       if(dn.stuckT>=(DR.stuckFuse||3)){
         boom(dn.x,dn.y,DR.selfBoomRadius||16,dn.dmg*(DR.selfBoomMult||2),dn.owner,'#4ef0e8');
         dn.hp=0;
       }
-    }else{ dn.stuckT=0; dn.fuse=0; }
-    if(dn.stuck){ /* tethered out — holds position */ }
-    else if(tg){ const a=Math.atan2(tg.y-dn.y,tg.x-dn.x);
-      dn.x+=Math.cos(a)*DR.speed*dt; dn.y+=Math.sin(a)*DR.speed*dt; }
-    else{ const o=owner;
-      if(o&&!o.dead&&Math.hypot(o.x-dn.x,o.y-dn.y)>DR.leashDist){
-        const a=Math.atan2(o.y-dn.y,o.x-dn.x);
-        dn.x+=Math.cos(a)*DR.returnSpeed*dt; dn.y+=Math.sin(a)*DR.returnSpeed*dt; } }
+      if(dn.hp<=0)for(let i=0;i<8;i++)S.fx.push({x:dn.x,y:dn.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.35,ci:'#4ef0e8'});
+      continue;                                          // no movement, no damage
+    }
+    dn.stuckT=0; dn.fuse=0;
+
+    // posture cycle
+    dn.modeT=(dn.modeT||0)-dt;
+    if(dn.modeT<=0){
+      const order=['guard','hunt','guard','roam'];
+      dn.modeI=((dn.modeI===undefined?-1:dn.modeI)+1)%order.length;
+      dn.mode=order[dn.modeI];
+      dn.modeT=DR.modeSeconds||3;
+    }
+    let mx=dn.x,my=dn.y;
+    if(dn.mode==='guard'&&owner&&tg){
+      // interpose: stand off the owner along the bearing to the threat, so
+      // the servitor is physically in the path of incoming fire
+      const a=Math.atan2(tg.y-owner.y,tg.x-owner.x);
+      mx=owner.x+Math.cos(a)*(DR.guardStand||18);
+      my=owner.y+Math.sin(a)*(DR.guardStand||18);
+    }else if(dn.mode==='hunt'&&tg){ mx=tg.x; my=tg.y; }
+    else if(owner){                                      // roam near the owner
+      dn.roamA=(dn.roamA||rnd(0,TAU))+dt*1.1;
+      mx=owner.x+Math.cos(dn.roamA)*(DR.roamRadius||34);
+      my=owner.y+Math.sin(dn.roamA)*(DR.roamRadius||34);
+    }
+    const mdx=mx-dn.x, mdy=my-dn.y, md=Math.hypot(mdx,mdy);
+    if(md>2){ const sp=(dn.mode==='hunt'?DR.speed:DR.returnSpeed);
+      dn.x+=mdx/md*sp*dt; dn.y+=mdy/md*sp*dt; }
     collideObstacles(dn);
     dn.hitCd=Math.max(0,dn.hitCd-dt);
+
+    // roam posture shoots instead of ramming. pbul() carries the owner's id,
+    // so team rules, PvP damage and team colouring all apply for free.
+    dn.shotT=Math.max(0,(dn.shotT||0)-dt);
+    if(dn.mode==='roam'&&tg&&dn.shotT<=0){
+      dn.shotT=DR.shotInterval||1.1;
+      const a=Math.atan2(tg.y-dn.y,tg.x-dn.x);
+      const sp=DR.shotSpeed||120;
+      pbul({x:dn.x,y:dn.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+        dmg:dn.dmg*(DR.shotDmgFrac||0.8),ci:1,r:1.5,owner:dn.owner,ttl:1.6});
+    }
+
     const dspan=dotReady(dn,dt);   // shared DoT cadence
     if(dspan){
       const ram=dn.dmg*dspan*DR.contactTick;
@@ -710,8 +834,11 @@ function hostUpdate(dt){
         if(Math.hypot(e.x-dn.x,e.y-dn.y)<e.r+3){
           damageE(e,ram,dn.owner);
           if(dn.hitCd<=0){dn.hitCd=DR.clawCooldown;dn.hp-=DR.clawDamage;} } }
-      // PvP: servitors ram hostile players too
-      hurtPlayersAt(dn.x,dn.y,3,ram,dn.owner,true);
+      hurtPlayersAt(dn.x,dn.y,3,ram,dn.owner,true);     // PvP: ram players too
+      for(const o of S.dr){ if(o===dn||o.hp<=0||o.owner===dn.owner)continue;
+        if(dOwner&&!hostile(dOwner.team,o.team))continue;
+        if(Math.hypot(o.x-dn.x,o.y-dn.y)<6)o.hp-=ram;   // servitor vs servitor
+      }
     }
     if(dn.hp<=0)for(let i=0;i<8;i++)S.fx.push({x:dn.x,y:dn.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.35,ci:'#4ef0e8'});
   }
@@ -720,11 +847,13 @@ function hostUpdate(dt){
   for(const z of S.zn){ z.ttl-=dt;
     // ramp: 1 dps at the moment it lands, climbing to z.dps by the end
     const age=Math.max(0,(z.dur||3)-z.ttl), k=clamp(age/(z.dur||3),0,1);
-    z.cur=1+(Math.max(1,z.dps)-1)*k;
-    // drag: everything inside the well is slowed while it stands in it
+    const start=z.start||0.5;                 // opens at a trickle
+    z.cur=start+(Math.max(start,z.dps)-start)*k;
+    // drag: everything inside the well is slowed while it stands in it.
+    // Overlapping wells stack — slowStkN counts them this frame.
     const Z=BAL.combat.zoneSlow;
-    for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
-      e.slowT=Math.max(e.slowT||0,Z.linger);
+    for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r){
+      e.slowT=Math.max(e.slowT||0,Z.linger); e.slowStkN=(e.slowStkN||0)+1; }
     // Players are only mired in modes where players are enemies, and never
     // the caster or their own side — otherwise your own well is a trap you
     // walk into, and in co-op it would drag your teammates down.
@@ -732,7 +861,8 @@ function hostUpdate(dt){
       if(q.dead||q.id===z.owner)continue;
       const src=S.players.get(z.owner);
       if(src&&!hostile(src.team,q.team))continue;
-      if(Math.hypot(q.x-z.x,q.y-z.y)<z.r+q.r) q.slowT=Math.max(q.slowT||0,Z.linger);
+      if(Math.hypot(q.x-z.x,q.y-z.y)<z.r+q.r){
+        q.slowT=Math.max(q.slowT||0,Z.linger); q.slowStkN=(q.slowStkN||0)+1; }
     }
     const span=dotReady(z,dt);
     if(span){
@@ -743,6 +873,9 @@ function hostUpdate(dt){
     if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:'#b34fff'});
   }
   S.zn=S.zn.filter(z=>z.ttl>0);
+  // publish this frame's stack counts, then reset the accumulators
+  for(const q of S.players.values()){ q.slowStk=q.slowStkN||0; q.slowStkN=0; }
+  for(const e of S.en){ e.slowStk=e.slowStkN||0; e.slowStkN=0; }
   // multi-part bosses: core is shielded (near-immune, see damageE) while any linked part survives
   for(const e of S.en){ if(e.hp<=0||!ET[ETI[e.k]].parts)continue;
     const nowShielded=S.en.some(pt=>pt.core===e.id&&pt.hp>0);
@@ -838,7 +971,7 @@ function hostUpdate(dt){
     // (left the match, stale id) is not parried either — otherwise a
     // teammate's fire can be destroyed on a technicality.
     for(const p of S.players.values()){
-      if(p.dead||!p.sabN||p.id===b.owner)continue;
+      if(p.dead||!p.sabN||!p.sabLit||p.id===b.owner)continue; // dim blades don't parry
       if(!shooter||!hostile(shooter.team,p.team))continue; // never friendly fire
       const dd=Math.hypot(b.x-p.x,b.y-p.y);
       if(dd<=CB.saber.deflectMin||dd>=CB.saber.reach)continue;
@@ -857,7 +990,7 @@ function hostUpdate(dt){
   // enemy bullets
   for(const b of S.eb){b.x+=b.vx*dt;b.y+=b.vy*dt;b.ttl-=dt;
     // saber blades deflect bolts
-    for(const p of S.players.values()){ if(p.dead||!p.sabN)continue;
+    for(const p of S.players.values()){ if(p.dead||!p.sabN||!p.sabLit)continue;
       const dd=Math.hypot(b.x-p.x,b.y-p.y);
       if(dd>CB.saber.deflectMin&&dd<CB.saber.reach){ const ba=Math.atan2(b.y-p.y,b.x-p.x);
         for(let i=0;i<p.sabN;i++){ let da=ba-(p.sabA+i/p.sabN*TAU);
@@ -946,12 +1079,19 @@ function hostUpdate(dt){
     setTimeout(()=>{if(S&&!S.over)nextWave();},600);
   }
 }
+/* Shards banked into the Sanctum. A Nexus Siege pays out in full; every
+   other mode is scaled back, so siege is the efficient way to earn meta
+   progress rather than farming waves. */
+function sanctumShards(raw){
+  const M=(BAL.economy&&BAL.economy.sanctumShardMult)||{siege:1,other:1};
+  return Math.round(raw*((S&&S.moba)?M.siege:M.other));
+}
 function runOver(){
   S.over=true;
   const me=S.players.get(myId);
-  finishRun(S.wave,S.score,me?me.shards:0);
+  finishRun(S.wave,S.score,sanctumShards(me?me.shards:0));
   for(const c of conns){ const p=S.players.get(c._pid);
-    c.send({t:'go',wave:S.wave,score:S.score,shards:p?p.shards:0}); }
+    c.send({t:'go',wave:S.wave,score:S.score,shards:sanctumShards(p?p.shards:0)}); }
 }
 function finishRun(wave,score,shards){
   mode='dead'; musicStop(); sfx('gameover');

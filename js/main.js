@@ -15,7 +15,8 @@ function loop(){
       pingAcc+=dt; if(pingAcc>=1){pingAcc=0;pingHost();} // 1Hz RTT probe feeds bulletLead()
       checkLocalHits(); // per-frame: did a bullet/enemy touch ME on MY screen?
       if(sendAcc>=.033&&conns[0]&&conns[0].open){sendAcc=0;                 // 30Hz input
-        conns[0].send({t:'in',x:Math.round(myPos.x),y:Math.round(myPos.y),inv:myPos.inv>0?1:0});}}
+        conns[0].send({t:'in',x:Math.round(myPos.x),y:Math.round(myPos.y),inv:myPos.inv>0?1:0,dg:dodgePending});
+        dodgePending=0;}}
     updateHUD();
   }
   render();

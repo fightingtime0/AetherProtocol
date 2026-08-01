@@ -47,7 +47,8 @@
     },
     "speed": 95,
     "ci": 2,
-    "sfx": "wNova"
+    "sfx": "wNova",
+    "r": 2
   },
   {
     "id": "rail",
@@ -71,7 +72,7 @@
       "per": 1
     },
     "speed": 280,
-    "r": 2,
+    "r": 2.5,
     "ci": 1,
     "sfx": "wRail"
   },
@@ -149,7 +150,10 @@
       "base": 14,
       "flat": 1.2
     },
-    "ci": 3
+    "ci": 3,
+    "r": 3,
+    "spark": 1,
+    "dodge": "hurl"
   },
   {
     "id": "saber",
@@ -170,7 +174,8 @@
       "base": 1,
       "per": 1
     },
-    "sfx": "wSaber"
+    "sfx": "wSaber",
+    "dodge": "ghost"
   },
   {
     "id": "fireball",
@@ -198,9 +203,10 @@
     },
     "boomDmgFrac": 0.9,
     "speed": 125,
-    "r": 2.5,
+    "r": 3.5,
     "ci": 0,
-    "sfx": "wFire"
+    "sfx": "wFire",
+    "spark": 1
   },
   {
     "id": "chain",
@@ -250,7 +256,8 @@
       "base": 20,
       "flat": 1.4
     },
-    "sfx": "wSmite"
+    "sfx": "wSmite",
+    "spark": 1
   },
   {
     "id": "venom",
@@ -287,15 +294,15 @@
     "type": "zone",
     "resource": "t",
     "cost": 14,
-    "desc": "Gravity well \u00b7 {radius}px, slows and ramps 1 \u2192 {dps} dmg/s",
+    "desc": "Gravity well \u00b7 {radius}px, stacks; ramps up while you stand in it",
     "cd": {
       "base": 2.3,
       "perLvl": 0.1,
       "min": 1.4
     },
     "dmg": {
-      "base": 12,
-      "flat": 2.5
+      "base": 7,
+      "flat": 1.5
     },
     "radius": {
       "base": 15.5,
@@ -303,7 +310,8 @@
     },
     "duration": 3,
     "sfx": "wSigil",
-    "rampTo": 1.25
+    "rampTo": 1.15,
+    "startDps": 0.5
   },
   {
     "id": "bomb",
@@ -329,9 +337,10 @@
     "impactFrac": 0.3,
     "speed": 110,
     "maxRange": 170,
-    "r": 2.5,
+    "r": 4,
     "ci": 5,
-    "sfx": "wBomb"
+    "sfx": "wBomb",
+    "spark": 1
   },
   {
     "id": "scatter",
@@ -359,7 +368,8 @@
     "spread": 0.4,
     "ttl": 0.38,
     "ci": 1,
-    "sfx": "wScatter"
+    "sfx": "wScatter",
+    "r": 1.6
   },
   {
     "id": "beam",
@@ -432,8 +442,9 @@
     },
     "speed": 160,
     "outT": 0.5,
-    "r": 2,
+    "r": 3,
     "ci": 4,
-    "sfx": "wRang"
+    "sfx": "wRang",
+    "spark": 1
   }
 ]

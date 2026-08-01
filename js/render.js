@@ -206,7 +206,21 @@ function render(){
       ctx.stroke(); ctx.globalAlpha=1;
       continue;
     }
-    if(teamed)bulletMark(bx,by,ci,col,1.5,Math.atan2(bvy,bvx));
+    // heavier rounds render bigger and throw sparks
+    const br2=isHost?(b.r||1.5):1.5;
+    const sparky=isHost&&b.spark;
+    if(sparky&&Math.random()<(BAL.combat.spark.chance||.5)){
+      const a2=rnd(0,TAU), sp=rnd(10,40);
+      S.fx.push({x:bx,y:by,vx:Math.cos(a2)*sp,vy:Math.sin(a2)*sp,
+        l:BAL.combat.spark.life||.22,ci:col});
+    }
+    if(teamed)bulletMark(bx,by,ci,col,Math.max(1.5,br2*0.8),Math.atan2(bvy,bvx));
+    else if(br2>2){                              // chunky projectile
+      ctx.fillStyle=col;
+      ctx.beginPath();ctx.arc(Math.round(bx),Math.round(by),br2,0,TAU);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.9)';
+      ctx.fillRect(Math.round(bx)-1,Math.round(by)-1,2,2);
+    }
     else{ ctx.fillStyle=col; ctx.fillRect(Math.round(bx-1),Math.round(by-1),3,2); }
   }
   // chain-lightning arcs — shows exactly what got zapped, and in what order
@@ -257,17 +271,19 @@ function render(){
       ctx.globalAlpha=.55+Math.sin(now()/140)*.15; ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(ex,ey,14*scl,0,TAU);ctx.stroke(); ctx.globalAlpha=1; ctx.lineWidth=1;
     }
-    // nexus lance — a continuous beam toward whatever it is burning
-    const lOn=isHost?e.laserOn:e.laserOn, lAng=isHost?(e.lang||0):(e.lang||0), lLen=isHost?(e.llen||0):(e.llen||0);
-    if(lOn&&lLen>0){
-      const gx=ex+Math.cos(lAng)*lLen, gy=ey+Math.sin(lAng)*lLen;
-      const col=(e.team!==undefined&&e.team>=0)?teamColor(e.team):'#ff4fd8';
-      ctx.globalAlpha=.25; ctx.strokeStyle=col; ctx.lineWidth=5;
+    // lances — the Arbiter runs two at once, everything else runs one
+    const beamCol=(e.team!==undefined&&e.team>=0)?teamColor(e.team):'#ff4fd8';
+    const drawBeam=(on,ang,len)=>{
+      if(!on||!(len>0))return;
+      const gx=ex+Math.cos(ang)*len, gy=ey+Math.sin(ang)*len;
+      ctx.globalAlpha=.25; ctx.strokeStyle=beamCol; ctx.lineWidth=5;
       ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(gx,gy);ctx.stroke();
       ctx.globalAlpha=.9; ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(gx,gy);ctx.stroke();
       ctx.globalAlpha=1;
-    }
+    };
+    drawBeam(e.laserOn,e.lang||0,e.llen||0);
+    drawBeam(e.laser2On,e.lang2||0,e.llen2||0);
     // Nexus Siege: ring team-owned entities in their side's colour, so
     // you can tell your own turrets from the enemy's at a glance
     if(e.team!==undefined&&e.team>=0){
@@ -340,13 +356,18 @@ function render(){
     // aether saber blades
     if(!p.dead&&sabN>0){
       const sa=isHost?(p.sabA||0):now()/1000*SC.spinSpeed;
+      // dim while on cooldown / unlit — the blade is visibly inert, which is
+      // the tell that it also isn't parrying right now
+      const lit=isHost?!!p.sabLit:!!p.sabLit;
       for(let i=0;i<sabN;i++){
         const a=sa+i/sabN*TAU;
+        const reach=lit?SC.reach-2:SC.reach*0.45;
         const x1=px+Math.cos(a)*7, y1=py+Math.sin(a)*7;
-        const x2=px+Math.cos(a)*(SC.reach-2), y2=py+Math.sin(a)*(SC.reach-2);
-        ctx.strokeStyle='rgba(124,255,107,.35)';ctx.lineWidth=3;
+        const x2=px+Math.cos(a)*reach, y2=py+Math.sin(a)*reach;
+        ctx.strokeStyle=lit?'rgba(124,255,107,.35)':'rgba(90,120,90,.18)';
+        ctx.lineWidth=lit?3:2;
         ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
-        ctx.strokeStyle='#e8ecff';ctx.lineWidth=1;
+        ctx.strokeStyle=lit?'#e8ecff':'rgba(150,165,150,.5)';ctx.lineWidth=1;
         ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
       }
       ctx.lineWidth=1;

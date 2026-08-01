@@ -29,10 +29,11 @@
     "chargeRange": 230,
     "chargeWindup": 0.65,
     "chargeTime": 0.85,
-    "chargeSpeed": 235,
+    "chargeSpeed": 320,
     "chargeCooldown": 5.0,
     "dropRadius": 340,
-    "chargeDamage": 55
+    "chargeDamage": 55,
+    "dropsChest": true
   },
   "nexus": {
     "auraRadius": 300,
@@ -54,7 +55,7 @@
     "chargeRange": 240,
     "chargeWindup": 0.6,
     "chargeTime": 0.9,
-    "chargeSpeed": 250,
+    "chargeSpeed": 340,
     "chargeCooldown": 4.5,
     "damage": 34,
     "laserRange": 260,
@@ -106,7 +107,8 @@
     "bulletSpeed": 78,
     "hpPerWave": 0.12,
     "chaseRadius": 250,
-    "dropRadius": 330
+    "dropRadius": 330,
+    "rangedDamage": 22
   },
   "creepInterval": 30,
   "respawnDelay": 10,
@@ -122,11 +124,27 @@
     "creepCooldown": 25,
     "chestCooldown": 30,
     "mercHpMul": 1.9,
-    "mercCount": 2
+    "mercCount": 2,
+    "mercKind": "merc"
   },
   "laserRamp": {
     "time": 2.2,
     "from": 0.35,
     "to": 1.75
+  },
+  "worldBoss": {
+    "_comment": "Neutral third team. Sweeps the map diagonally after creep wave 15; if ignored it roots and becomes a hive-nexus.",
+    "afterCreepWave": 15,
+    "sweepSpeed": 26,
+    "idleToHive": 15,
+    "hiveOrbitRadius": 90,
+    "hiveOrbitSpeed": 0.6,
+    "hiveCreepEvery": 8,
+    "hiveMaxCreeps": 8,
+    "chestsOnDeath": 6,
+    "hiveChestsOnDeath": 12,
+    "xpReward": 600,
+    "hiveXpReward": 1200,
+    "laserTargets": 2
   }
 }
