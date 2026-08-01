@@ -444,25 +444,33 @@ function updateHUD(){
   const mb=(role!=='client')
     ? (S&&S.moba?[nexusPct(0),nexusPct(1),S.mobaOver||0,(S.kills&&S.kills[0])||0,(S.kills&&S.kills[1])||0]:0)
     : (V&&V.mb);
-  $('siegeBar').classList.toggle('hidden',!mb);
-  if(mb){
+  const siegeOn=!!mb;
+  $('siegeBar').classList.toggle('hidden',!siegeOn);
+  $('siegeNexus').classList.toggle('hidden',!siegeOn);
+  if(siegeOn){
     for(let t=0;t<2;t++){
       $('sgName'+t).textContent=teamName(t);
       $('sgName'+t).style.color=teamColor(t);
       $('sgKills'+t).textContent=mb[3+t]||0;
+      $('sgKills'+t).style.color=teamColor(t);
       const bar=$('sgBar'+t);
       bar.style.width=clamp(mb[t],0,100)+'%';
       bar.style.background=teamColor(t);
     }
   }
-  // boss healthbar
+  // Boss healthbar. Suppressed entirely in a siege: nexuses and guardians are
+  // flagged boss:true in the data, so this used to latch onto a structure and
+  // stack on top of the siege HUD at top-centre. The nexus bars below the play
+  // area cover that role there.
   let bnm='',bhp=0,hasBoss=false;
-  if(role!=='client'&&S){
-    for(const e of S.en) if(e.boss&&e.hp>0){hasBoss=true;
-      bnm=(ET[ETI[e.k]].bn||'BOSS')+(e.shielded?' ⛨ SHIELDED':'');bhp=e.hp/e.maxhp;break;}
-  }else if(V){
-    for(const e of V.en.values()) if(ET[e.ti]&&ET[e.ti].boss){hasBoss=true;
-      bnm=(ET[e.ti].bn||'BOSS')+(e.shielded?' ⛨ SHIELDED':'');bhp=(e.hpp||0)/100;break;}
+  if(!siegeOn){
+    if(role!=='client'&&S){
+      for(const e of S.en) if(e.boss&&e.hp>0){hasBoss=true;
+        bnm=(ET[ETI[e.k]].bn||'BOSS')+(e.shielded?' ⛨ SHIELDED':'');bhp=e.hp/e.maxhp;break;}
+    }else if(V){
+      for(const e of V.en.values()) if(ET[e.ti]&&ET[e.ti].boss){hasBoss=true;
+        bnm=(ET[e.ti].bn||'BOSS')+(e.shielded?' ⛨ SHIELDED':'');bhp=(e.hpp||0)/100;break;}
+    }
   }
   $('bossWrap').classList.toggle('hidden',!hasBoss);
   if(hasBoss){$('bossName').textContent=bnm;$('bossBar').style.width=Math.max(0,bhp*100)+'%';}

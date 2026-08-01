@@ -112,18 +112,24 @@ kbd{background:#10152a;border:1px solid var(--edge);padding:2px 7px;border-radiu
 #hUpgrades{margin-top:6px;font-size:9px;line-height:1.5;color:#bfe6ff;text-align:right;
   text-shadow:1px 1px 0 #000;max-width:150px;pointer-events:none}
 #hUpgrades span{display:inline-block;margin-left:6px;white-space:nowrap}
-/* Nexus Siege scoreboard, centred at the top of the screen */
+/* Nexus Siege — kill tally only, top centre. Deliberately narrow: the boss
+   bar also lives at top-centre, and the two used to stack on each other. */
 #siegeBar{position:fixed;top:6px;left:50%;transform:translateX(-50%);
-  display:flex;align-items:center;gap:10px;pointer-events:none;z-index:6;
-  font-size:10px;letter-spacing:1px;text-shadow:1px 1px 0 #000}
+  display:flex;align-items:center;gap:7px;pointer-events:none;z-index:7;
+  text-shadow:1px 1px 0 #000}
 #siegeBar.hidden{display:none}
+.sgKills{font-size:15px;font-weight:bold;color:#fff;min-width:18px;text-align:center}
+.sgVs{color:var(--dim);font-size:10px}
+/* Nexus integrity, as a pair of coloured bars BELOW the play area */
+#siegeNexus{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:14px;pointer-events:none;z-index:6;
+  font-size:9px;letter-spacing:1px;text-shadow:1px 1px 0 #000}
+#siegeNexus.hidden{display:none}
 .sgSide{display:flex;align-items:center;gap:6px}
-.sgRight{flex-direction:row}
 .sgName{font-weight:bold}
-.sgKills{font-size:13px;color:#fff;min-width:16px;text-align:center}
-.sgWrap{width:88px;height:6px;background:#060810;border:1px solid var(--edge)}
+.sgWrap{width:min(150px,26vw);height:7px;background:#060810;border:1px solid var(--edge)}
+.sgFlip{transform:scaleX(-1)}   /* right side drains toward its own base */
 .sgBar{height:100%;width:100%;transition:width .2s}
-.sgVs{color:var(--dim);font-size:8px}
 /* boss bar */
 #bossWrap{position:fixed;top:8px;left:50%;transform:translateX(-50%);width:min(420px,64vw);z-index:5;pointer-events:none;text-align:center}
 #bossName{font-size:11px;letter-spacing:.22em;color:var(--magenta);text-shadow:1px 1px 0 #000;margin-bottom:3px;font-weight:bold}

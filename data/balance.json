@@ -44,7 +44,7 @@
     },
     "orbit": {
       "radius": 40,
-      "spinSpeed": 2.2,
+      "spinSpeed": 3.2,
       "life": 6.0,
       "boom": 14,
       "boomDmgFrac": 0.85
@@ -55,11 +55,12 @@
       "spinSpeed": 7,
       "deflectArc": 0.38,
       "deflectMin": 6,
-      "tickInterval": 0.55,
+      "tickInterval": 0.72,
       "energyPerHit": 2.5,
       "deflectBonus": 3.5,
       "maxDeflectBonus": 28,
-      "bulletParry": true
+      "bulletParry": true,
+      "dps": 16
     },
     "drones": {
       "maxPerPlayer": 2,

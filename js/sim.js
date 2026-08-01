@@ -603,10 +603,7 @@ function hostUpdate(dt){
        up to a cap — so parrying a barrage sets up a big swing. */
     p.sabTick=Math.max(0,(p.sabTick||0)-dt);
     for(const w of p.weapons){ if(!WPN[w.id].passiveSaber)continue;
-      if(p.sabTick>0)break;
       const n=sabCountW(w);
-      const bonus=Math.min(p.sabCharge||0,CB.saber.maxDeflectBonus);
-      const dmg=(wDmg(WPN[w.id],w,p)+bonus)*p.dmgBoost;
       const inArc=(ox,oy,orad)=>{
         const dd=Math.hypot(ox-p.x,oy-p.y);
         if(dd>CB.saber.reach+orad)return false;
@@ -616,17 +613,54 @@ function hostUpdate(dt){
           if(Math.abs(da)<CB.saber.arc)return true; }
         return false;
       };
-      let struck=false;
+      /* Two damage modes:
+           ENTERING the blades → one burst carrying every point of parry
+                                 damage banked from deflected bolts
+           STAYING in them     → a steady damage-over-time tick
+
+         Contact is sampled EVERY FRAME, not on the DoT cadence. The blades
+         sweep at ~1.1 rev/s, so testing the arc at 4.5Hz aliases badly and
+         the burst fires on whichever sample happens to land inside it. */
+      const contact=[];                      // who is in the arc this frame
       for(const e of S.en){ if(e.hp<=0)continue;
-        if(inArc(e.x,e.y,e.r)){ damageE(e,dmg,p.id); struck=true; } }
+        if(inArc(e.x,e.y,e.r))contact.push([e,'e'+e.id,false]); }
       for(const q of foePlayers(p))
-        if(inArc(q.x,q.y,q.r)){ hurt(q,dmg,p.id); struck=true; }
-      if(struck){
+        if(inArc(q.x,q.y,q.r))contact.push([q,'p'+q.id,true]);
+
+      const wasIn=p.sabIn||new Set();
+      const nowIn=new Set();
+      const base=wDmg(WPN[w.id],w,p)*p.dmgBoost;
+      const bonus=Math.min(p.sabCharge||0,CB.saber.maxDeflectBonus);
+      let burst=false;
+      for(const [o,key,isPlayer] of contact){
+        nowIn.add(key);
+        if(!wasIn.has(key)&&p.sabTick<=0){    // fresh entry, swing ready
+          const dmg=base+bonus;
+          if(isPlayer)hurt(o,dmg,p.id); else damageE(o,dmg,p.id);
+          burst=true;
+        }
+      }
+      p.sabIn=nowIn;
+      if(burst){
         p.sabTick=CB.saber.tickInterval;
-        p.sabCharge=0;                       // the stored parry damage is spent
+        p.sabCharge=0;                        // banked parry damage is spent
         p.t=Math.max(0,p.t-CB.saber.energyPerHit);
         if(p.t<=0){p.t=0;p.tLock=true;}
-        sfxE('wSaber');
+        sfxE('wSaber',p.x,p.y);
+      }
+      /* Sustained burn, applied per frame WHILE touching — deliberately not
+         on the shared DoT cadence. A blade sweeping at ~1.1 rev/s only
+         overlaps a target for a fraction of each revolution, so a global
+         0.22s release window almost never coincides with contact and the
+         burn would simply never land. Contact is its own throttle here. */
+      if(contact.length){
+        const tickDmg=CB.saber.dps*dt*p.dmgBoost;
+        for(const [o,key,isPlayer] of contact){
+          if(burst&&!wasIn.has(key))continue;  // already took the entry burst
+          if(isPlayer)hurt(o,tickDmg,p.id,true); else damageE(o,tickDmg,p.id,true);
+        }
+        p.t=Math.max(0,p.t-CB.saber.energyPerHit*dt/CB.saber.tickInterval);
+        if(p.t<=0){p.t=0;p.tLock=true;}
       }
     }
   }
@@ -800,9 +834,12 @@ function hostUpdate(dt){
   if(S.pvp)for(const b of S.pb){
     if(b.dead||b.orb)continue;                       // your own fangs aren't incoming fire
     const shooter=S.players.get(b.owner);
+    // Only ever swat a bullet from a KNOWN hostile shooter. An unknown owner
+    // (left the match, stale id) is not parried either — otherwise a
+    // teammate's fire can be destroyed on a technicality.
     for(const p of S.players.values()){
       if(p.dead||!p.sabN||p.id===b.owner)continue;
-      if(shooter&&!hostile(shooter.team,p.team))continue;
+      if(!shooter||!hostile(shooter.team,p.team))continue; // never friendly fire
       const dd=Math.hypot(b.x-p.x,b.y-p.y);
       if(dd<=CB.saber.deflectMin||dd>=CB.saber.reach)continue;
       const ba=Math.atan2(b.y-p.y,b.x-p.x);
