@@ -75,6 +75,11 @@ input[type=text]:focus{border-color:var(--gold);outline:none}
 #pickBanner{position:fixed;top:64px;left:0;right:0;text-align:center;z-index:6;pointer-events:none;
   font-size:12px;letter-spacing:.12em;color:var(--gold);text-shadow:1px 1px 0 #000}
 #touchui{position:fixed;inset:0;z-index:4;display:none;pointer-events:none}
+/* upgrade cards must beat the touch stick: on a phone the stick sits over
+   the left of the screen and was eating taps meant for the left-hand card */
+#scrPick{z-index:9}
+body.picking #touchui{pointer-events:none!important;opacity:.25}
+body.picking #stickbase,body.picking #sticknub{display:none!important}
 #stickbase{position:absolute;width:110px;height:110px;border:2px solid rgba(107,115,150,.4);border-radius:50%;
   background:rgba(20,26,46,.3);display:none}
 #sticknub{position:absolute;width:46px;height:46px;border-radius:50%;background:rgba(78,240,232,.35);

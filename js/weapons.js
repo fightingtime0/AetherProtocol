@@ -30,7 +30,8 @@ function droneStats(def,lvl,rar,p){
 
 // orbit deliberately absent: fangs are summoned around the player, so the
 // weapon must fire even with nothing in range
-const NEEDS_TARGET={aimed:1,lance:1,lob:1,chain:1,smite:1,zone:1,scatter:1,beam:1,wave:1,boomerang:1};
+const NEEDS_TARGET={aimed:1,lance:1,lob:1,chain:1,smite:1,zone:1,scatter:1,beam:1,wave:1,boomerang:1,
+  flail:1,prism:1,mortar:1,leech:1};   // quake is self-centred, like orbit
 const BEHAVIORS={
   aimed(def,p,w,tg){
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), n=cnt(def.count,w.lvl);
@@ -147,6 +148,48 @@ const BEHAVIORS={
         wob:1,baseAng,wx0:p.x,wy0:p.y,wspd:sp,wobT:0,
         wfreq:def.wobFreq||6,wamp:def.wobAmp||14});
     }
+  },
+  /* ---- new archetypes ---- */
+  flail(def,p,w,tg){ // weighted chain: a wide arc of stationary hit-boxes
+    const a=Math.atan2(tg.y-p.y,tg.x-p.x), dmg=wDmg(def,w,p);
+    const span=def.arcSpan||1.5, steps=5;
+    for(let i=0;i<steps;i++){
+      const off=(i/(steps-1)-0.5)*span, ang=a+off;
+      pbul({x:p.x+Math.cos(ang)*def.reach,y:p.y+Math.sin(ang)*def.reach,
+        vx:0,vy:0,dmg,ci:def.ci||3,r:4,owner:p.id,
+        ttl:def.sweepTime||0.28,pierce:0,spark:wpnSpark(def)});
+    }
+  },
+  prism(def,p,w,tg){ // splits into shards where it lands
+    const a=Math.atan2(tg.y-p.y,tg.x-p.x), sp=def.speed*p.st.bspdM;
+    pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      dmg:wDmg(def,w,p),ci:def.ci||1,r:def.r||2.5,owner:p.id,ttl:1.8,pierce:0,
+      spark:wpnSpark(def),
+      split:{n:cnt(def.shards,w.lvl),dmg:wDmg(def,w,p)*0.55,speed:sp*0.8,ci:def.ci||1}});
+  },
+  mortar(def,p,w,tg){ // lobbed shell: a delayed crater, like smite but owned by a weapon
+    const SB=BAL.combat.smite;
+    S.mk.push({x:tg.x,y:tg.y,t:def.shellTime||0.9,tMax:def.shellTime||0.9,
+      r0:SB.startRadius,r:scaleVal(def.boom,w.lvl),
+      dmg:wDmg(def,w,p),owner:p.id});
+  },
+  leech(def,p,w,tg){ // short tether that drains and heals
+    const d=Math.hypot(tg.x-p.x,tg.y-p.y);
+    if(d>(def.range||90))return;
+    const dmg=wDmg(def,w,p)*(BAL.combat.dotTick);
+    if(tg.weapons)hurt(tg,dmg,p.id,true); else damageE(tg,dmg,p.id,true);
+    p.hp=Math.min(p.maxhp,p.hp+dmg*(def.healFrac||0.3));
+    S.ar.push({x1:p.x,y1:p.y,x2:tg.x,y2:tg.y,l:BAL.combat.chainArc.life});
+  },
+  quake(def,p,w){ // expanding shockwave centred on you
+    const r=scaleVal(def.radius,w.lvl), dmg=wDmg(def,w,p);
+    for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-p.x,e.y-p.y)<r+e.r){
+      damageE(e,dmg,p.id); e.slowT=Math.max(e.slowT||0,0.6); }   // staggers
+    hurtPlayersAt(p.x,p.y,r,dmg,p.id);
+    for(let i=0;i<20;i++){const a=i/20*TAU;
+      S.fx.push({x:p.x+Math.cos(a)*r*0.6,y:p.y+Math.sin(a)*r*0.6,
+        vx:Math.cos(a)*70,vy:Math.sin(a)*70,l:.3,ci:'#ffd35c'});}
+    S.shake=Math.max(S.shake,.2);
   },
   boomerang(def,p,w,tg){ // thrown blade: flies out, then curves back to whoever threw it
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), dmg=wDmg(def,w,p), sp=def.speed*p.st.bspdM;

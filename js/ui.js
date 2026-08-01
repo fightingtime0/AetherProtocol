@@ -110,8 +110,12 @@ function showPickUI(views,dl,owned){
     ow.appendChild(d);
   });
   $('scrPick').classList.remove('hidden');
+  document.body.classList.add('picking');   // hides the touch stick (see CSS)
 }
-function hidePickUI(){ $('scrPick').classList.add('hidden'); }
+function hidePickUI(){ $('scrPick').classList.add('hidden');
+  document.body.classList.remove('picking');
+  touch.active=false; touch.dx=0; touch.dy=0;   // drop any stick input held mid-pick
+}
 
 /* ---------------- character editor ---------------- */
 const ed={cv:$('edGrid'),cell:24,painting:false,color:'#4ef0e8',showHB:true,px:null};

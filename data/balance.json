@@ -52,7 +52,7 @@
     },
     "saber": {
       "reach": 26,
-      "arc": 0.5,
+      "arc": 0.62,
       "spinSpeed": 7,
       "deflectArc": 0.38,
       "deflectMin": 6,
@@ -61,13 +61,15 @@
       "deflectBonus": 3.5,
       "maxDeflectBonus": 28,
       "bulletParry": true,
-      "dps": 16,
+      "dps": 26,
       "relightCost": 6,
       "dimDps": 0,
       "ghostCount": 3,
-      "ghostDmgFrac": 0.45,
-      "ghostLife": 0.45,
-      "ghostRadius": 5
+      "ghostDmgFrac": 0.4,
+      "ghostLife": 0.4,
+      "ghostRadius": 5,
+      "burnLinger": 0.35,
+      "ghostEvery": 0.05
     },
     "drones": {
       "maxPerPlayer": 2,

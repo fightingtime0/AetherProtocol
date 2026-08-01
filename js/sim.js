@@ -223,10 +223,83 @@ function objDone(v){
    Fired when a player dashes. The host owns the consequence for everyone:
    its own player calls this directly, remote clients flag it on their next
    input packet. Weapons opt in via a "dodge" key in weapons.json. */
+const DRONE_ORDER=['guard','hunt','guard','roam'];
+function advanceServitors(p){
+  for(const dn of S.dr){
+    if(dn.owner!==p.id)continue;
+    dn.modeI=((dn.modeI===undefined?-1:dn.modeI)+1)%DRONE_ORDER.length;
+    dn.mode=DRONE_ORDER[dn.modeI];
+    S.fx.push({x:dn.x,y:dn.y,vx:0,vy:-20,l:.3,ci:'#4ef0e8'});
+  }
+}
 function onDodge(p){
   if(!p||p.dead)return;
+  advanceServitors(p);          // dodging is the swarm's order button
   for(const w of p.weapons){
     const def=WPN[w.id]; if(!def||!def.dodge)continue;
+    // generic reactions shared by most weapons; the bespoke ones follow
+    const foeNear=(rad)=>{ let best=null,bd=(rad||400)**2;
+      for(const e of S.en){ if(e.hp<=0||!hostile(p.team,e.team))continue;
+        const d=(e.x-p.x)**2+(e.y-p.y)**2; if(d<bd){bd=d;best=e;} }
+      for(const q of foePlayers(p)){
+        const d=(q.x-p.x)**2+(q.y-p.y)**2; if(d<bd){bd=d;best=q;} }
+      return best; };
+    const shoot=(ang,n,spread,sp,dmg,ci,ttl)=>{
+      for(let i=0;i<n;i++){
+        const off=(i-(n-1)/2)*(spread||0.16);
+        pbul({x:p.x,y:p.y,vx:Math.cos(ang+off)*sp,vy:Math.sin(ang+off)*sp,
+          dmg,ci:ci||0,r:1.5,owner:p.id,ttl:ttl||1.4});
+      } };
+    const base=wDmg(def,w,p);
+    const tgt=foeNear(340);
+    const aimAt=tgt?Math.atan2(tgt.y-p.y,tgt.x-p.x):rnd(0,TAU);
+    switch(def.dodge){
+      case 'volley':      shoot(aimAt,3,0.18,190,base*0.5,def.ci); break;
+      case 'burstring':   shoot(0,10,TAU/10,140,base*0.4,def.ci); break;
+      case 'frostnova':   shoot(0,8,TAU/8,120,base*0.4,def.ci);
+                          for(const e of S.en) if(e.hp>0&&hostile(p.team,e.team)&&
+                            Math.hypot(e.x-p.x,e.y-p.y)<70)e.slowT=Math.max(e.slowT||0,1.2);
+                          break;
+      case 'blink':       shoot(aimAt,1,0,320,base*0.9,def.ci); break;
+      case 'lash':        if(tgt)shoot(aimAt,1,0,260,base*1.2,def.ci); break;
+      case 'mine':        pbul({x:p.x,y:p.y,vx:0,vy:0,dmg:base*0.3,ci:def.ci||5,r:3,
+                            owner:p.id,ttl:4,pierce:0,
+                            boom:scaleVal(def.boom,w.lvl)||16,boomDmg:base*0.8,spark:1}); break;
+      case 'cloud':       S.zn.push({x:p.x,y:p.y,r:26,dps:base*0.6,start:base*0.6,
+                            dur:2.2,ttl:2.2,owner:p.id}); break;
+      case 'wellDrop':    S.zn.push({x:p.x,y:p.y,r:scaleVal(def.radius,w.lvl)||20,
+                            dps:base,start:base*0.5,dur:2.5,ttl:2.5,owner:p.id}); break;
+      case 'markspot':    if(tgt)S.mk.push({x:tgt.x,y:tgt.y,t:0.5,tMax:0.5,
+                            r0:BAL.combat.smite.startRadius,r:scaleVal(def.boom,w.lvl)||16,
+                            dmg:base*0.8,owner:p.id}); break;
+      case 'barrage':     for(let i=0;i<3;i++)S.mk.push({x:p.x+rnd(-70,70),y:p.y+rnd(-70,70),
+                            t:0.7,tMax:0.7,r0:BAL.combat.smite.startRadius,
+                            r:scaleVal(def.boom,w.lvl)*0.6||14,dmg:base*0.5,owner:p.id}); break;
+      case 'dischargeArc':if(tgt)pbul({x:p.x,y:p.y,vx:Math.cos(aimAt)*220,vy:Math.sin(aimAt)*220,
+                            dmg:base*0.7,ci:def.ci||1,r:2,owner:p.id,ttl:1.2,pierce:0,
+                            chain:{hops:2,range:def.range||85}}); break;
+      case 'rally':       advanceServitors(p); break;   // already called above; harmless
+      case 'boomerangThrow':
+                          pbul({x:p.x,y:p.y,vx:Math.cos(aimAt)*200,vy:Math.sin(aimAt)*200,
+                            dmg:base*0.8,ci:def.ci||4,r:2,owner:p.id,ttl:2.4,pierce:6,
+                            rang:1,outT:0.4,rspd:230,rt:0,returning:false}); break;
+      case 'whirl':       { const n=8; for(let i=0;i<n;i++){ const a2=i/n*TAU;
+                            pbul({x:p.x+Math.cos(a2)*(def.reach||36),y:p.y+Math.sin(a2)*(def.reach||36),
+                              vx:0,vy:0,dmg:base*0.6,ci:def.ci||3,r:4,owner:p.id,
+                              ttl:0.35,pierce:0,spark:1}); } } break;
+      case 'prismburst':  shoot(0,cnt(def.shards,w.lvl)*2,TAU/(cnt(def.shards,w.lvl)*2),
+                            160,base*0.45,def.ci,0.9); break;
+      case 'stomp':       { const r=scaleVal(def.radius,w.lvl)*1.2||48;
+                            for(const e of S.en) if(e.hp>0&&hostile(p.team,e.team)&&
+                              Math.hypot(e.x-p.x,e.y-p.y)<r){ damageE(e,base*0.7,p.id);
+                              e.slowT=Math.max(e.slowT||0,0.8); }
+                            hurtPlayersAt(p.x,p.y,r,base*0.7,p.id);
+                            S.shake=Math.max(S.shake,.18); } break;
+      case 'snap':        if(tgt){ const dmg=base*1.1;
+                            if(tgt.weapons)hurt(tgt,dmg,p.id); else damageE(tgt,dmg,p.id);
+                            p.hp=Math.min(p.maxhp,p.hp+dmg*(def.healFrac||0.3));
+                            S.ar.push({x1:p.x,y1:p.y,x2:tgt.x,y2:tgt.y,l:0.25}); } break;
+    }
     if(def.dodge==='hurl'){
       // fling every orbiting fang at the nearest hostile
       const sp=BAL.combat.orbit.hurlSpeed||190;
@@ -242,17 +315,11 @@ function onDodge(p){
       }
       sfxE('wOrbit',p.x,p.y);
     }else if(def.dodge==='ghost'){
-      // leave short-lived ghost blades along the dash that each land ONE
-      // instance of modest damage — stationary, pierce-0 bullets
-      const G=BAL.combat.saber;
-      const n=G.ghostCount||3;
-      const dmg=wDmg(def,w,p)*(G.ghostDmgFrac||0.45);
-      for(let i=0;i<n;i++){
-        const a=(p.sabA||0)+i/n*TAU;
-        pbul({x:p.x+Math.cos(a)*(G.reach*0.6),y:p.y+Math.sin(a)*(G.reach*0.6),
-          vx:0,vy:0,dmg,ci:4,r:G.ghostRadius||5,owner:p.id,
-          ttl:G.ghostLife||0.45,pierce:0,ghost:1});
-      }
+      // Afterimages: the blades keep printing copies of themselves along the
+      // dash for as long as the dodge lasts, rather than dropping a few
+      // scattered blobs. sabGhostT is spent down in hostUpdate().
+      p.sabGhostT=BAL.player.dashDuration;
+      p.sabGhostW=w.id;
       sfxE('wSaber',p.x,p.y);
     }
   }
@@ -660,6 +727,26 @@ function hostUpdate(dt){
        p.sabCharge, which is added to (and consumed by) the next strike,
        up to a cap — so parrying a barrage sets up a big swing. */
     p.sabTick=Math.max(0,(p.sabTick||0)-dt);
+    /* saber afterimages — one set per frame for the length of the dash, each
+       a stationary pierce-0 blade so it lands exactly one instance */
+    if(p.sabGhostT>0){
+      p.sabGhostT-=dt;
+      const G=CB.saber, gw=p.weapons.find(w=>w.id===p.sabGhostW)||p.weapons[0];
+      if(gw&&WPN[gw.id]){
+        p.sabGhostAcc=(p.sabGhostAcc||0)+dt;
+        if(p.sabGhostAcc>=(G.ghostEvery||0.05)){
+          p.sabGhostAcc=0;
+          const n=Math.max(1,p.sabN||1);
+          const dmg=wDmg(WPN[gw.id],gw,p)*(G.ghostDmgFrac||0.45);
+          for(let i=0;i<n;i++){
+            const a=(p.sabA||0)+i/n*TAU;
+            pbul({x:p.x+Math.cos(a)*(G.reach*0.55),y:p.y+Math.sin(a)*(G.reach*0.55),
+              vx:0,vy:0,dmg,ci:4,r:G.ghostRadius||5,owner:p.id,
+              ttl:G.ghostLife||0.4,pierce:0,ghost:1});
+          }
+        }
+      }
+    }
     /* Blade ignition. After a swing the blades go DIM for the cooldown: no
        burst, no burn, and — the multiplayer half of this — no parry either,
        so a dim saber cannot swat incoming PvP fire. Relighting costs charge,
@@ -725,19 +812,37 @@ function hostUpdate(dt){
         if(p.t<=0){p.t=0;p.tLock=true;p.sabLit=false;} // ran dry — blade goes out
         sfxE('wSaber',p.x,p.y);
       }
-      /* Sustained burn, applied per frame WHILE touching — deliberately not
-         on the shared DoT cadence. A blade sweeping at ~1.1 rev/s only
-         overlaps a target for a fraction of each revolution, so a global
-         0.22s release window almost never coincides with contact and the
-         burn would simply never land. Contact is its own throttle here. */
-      if(contact.length){
+      /* Sustained burn, per frame while touching — NOT on the shared DoT
+         cadence. A blade sweeping at ~1.1 rev/s only overlaps a target for a
+         fraction of each revolution, so a global release window almost never
+         coincides with contact.
+         The blades also LINGER: once something is cut it keeps burning for
+         burnLinger seconds even after the blade sweeps past. Without that the
+         damage visibly stutters — the target is plainly inside the blades but
+         only takes a hit on the frames the arc happens to overlap it. */
+      const burn=p.sabBurn||(p.sabBurn=new Map());
+      for(const [,key] of contact) burn.set(key,CB.saber.burnLinger||0.3);
+      if(burn.size){
         const tickDmg=CB.saber.dps*dt*p.dmgBoost;
-        for(const [o,key,isPlayer] of contact){
-          if(burst&&!wasIn.has(key))continue;  // already took the entry burst
+        const byKey=new Map();
+        for(const [o,key,isPlayer] of contact) byKey.set(key,[o,isPlayer]);
+        for(const e of S.en) if(e.hp>0) byKey.set('e'+e.id,[e,false]);
+        for(const q of foePlayers(p)) byKey.set('p'+q.id,[q,true]);
+        let burned=false;
+        for(const [key,left] of [...burn]){
+          const t2=left-dt;
+          if(t2<=0){ burn.delete(key); continue; }
+          burn.set(key,t2);
+          const rec=byKey.get(key); if(!rec)continue;
+          const [o,isPlayer]=rec;
+          if(burst&&!wasIn.has(key))continue;   // already took the entry burst
           if(isPlayer)hurt(o,tickDmg,p.id,true); else damageE(o,tickDmg,p.id,true);
+          burned=true;
         }
-        p.t=Math.max(0,p.t-CB.saber.energyPerHit*dt/CB.saber.tickInterval);
-        if(p.t<=0){p.t=0;p.tLock=true;p.sabLit=false;} // ran dry mid-burn
+        if(burned){
+          p.t=Math.max(0,p.t-CB.saber.energyPerHit*dt/CB.saber.tickInterval);
+          if(p.t<=0){p.t=0;p.tLock=true;p.sabLit=false;} // ran dry mid-burn
+        }
       }
     }
   }
@@ -788,14 +893,9 @@ function hostUpdate(dt){
     }
     dn.stuckT=0; dn.fuse=0;
 
-    // posture cycle
-    dn.modeT=(dn.modeT||0)-dt;
-    if(dn.modeT<=0){
-      const order=['guard','hunt','guard','roam'];
-      dn.modeI=((dn.modeI===undefined?-1:dn.modeI)+1)%order.length;
-      dn.mode=order[dn.modeI];
-      dn.modeT=DR.modeSeconds||3;
-    }
+    // posture is advanced by the OWNER DODGING (see onDodge), not a timer —
+    // it is a controlled command, not ambient behaviour
+    if(dn.mode===undefined){ dn.modeI=0; dn.mode=DRONE_ORDER[0]; }
     let mx=dn.x,my=dn.y;
     if(dn.mode==='guard'&&owner&&tg){
       // interpose: stand off the owner along the bearing to the threat, so
@@ -954,8 +1054,25 @@ function hostUpdate(dt){
         break;
       }
     }
+    // servitors are solid to player fire too; without this an enemy's bullets
+    // simply passed through a swarm
+    if(!b.dead)for(const dn of S.dr){
+      if(dn.hp<=0||!hostile(bTeam,dn.team))continue;
+      if(dn.owner===b.owner)continue;
+      if(Math.hypot(dn.x-b.x,dn.y-b.y)<3+b.r+1){
+        dn.hp-=b.dmg;
+        if(b.pierce>0)b.pierce--; else b.dead=true;
+        S.fx.push({x:dn.x,y:dn.y,vx:rnd(-25,25),vy:rnd(-25,25),l:.25,ci:'#4ef0e8'});
+        break;
+      }
+    }
     if(b.ttl<=0||(!b.orb&&bulletHitsObstacle(b)))b.dead=true; // fangs sweep over cover
     if(b.dead&&b.chain&&!b.chained){b.chained=1;chainBurst(b);} // arc where the bolt stopped
+    if(b.dead&&b.split&&!b.splitted){ b.splitted=1;            // prism: burst into shards
+      const S2=b.split;
+      for(let i=0;i<S2.n;i++){ const a2=i/S2.n*TAU;
+        pbul({x:b.x,y:b.y,vx:Math.cos(a2)*S2.speed,vy:Math.sin(a2)*S2.speed,
+          dmg:S2.dmg,ci:S2.ci,r:1.5,owner:b.owner,ttl:0.9,pierce:0}); } }
     if(b.dead&&b.boom&&!b.boomed){b.boomed=1;boom(b.x,b.y,b.boom,b.boomDmg,b.owner);
       if(b.orb)sfxE('orbPop');}
   }
@@ -991,6 +1108,7 @@ function hostUpdate(dt){
   for(const b of S.eb){b.x+=b.vx*dt;b.y+=b.vy*dt;b.ttl-=dt;
     // saber blades deflect bolts
     for(const p of S.players.values()){ if(p.dead||!p.sabN||!p.sabLit)continue;
+      if(!hostile(b.team,p.team))continue;   // never parry your own side's fire
       const dd=Math.hypot(b.x-p.x,b.y-p.y);
       if(dd>CB.saber.deflectMin&&dd<CB.saber.reach){ const ba=Math.atan2(b.y-p.y,b.x-p.x);
         for(let i=0;i<p.sabN;i++){ let da=ba-(p.sabA+i/p.sabN*TAU);

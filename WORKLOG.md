@@ -25,6 +25,43 @@ Deeper background, the forward plan and the operational gotchas live in
 
 ---
 
+## <2026-08-01 06:30 / session 1 / update #11> - saber fixes, universal dodge, new weapons, bigger FOV
+
+**Changed**
+- Saber: no longer parries friendly fire; burn now **lingers 0.35s** after the
+  blade sweeps past (dps 16 → 26, arc 0.5 → 0.62); dodge leaves **afterimages
+  printed along the whole dash** instead of a few scattered blades.
+- Servitors: postures now advance **on dodge** (a command, not ambient drift),
+  and player bullets can finally hit them.
+- Orbiting Fang renamed **Orbit Drones**; **every** weapon now has a dodge
+  reaction (17 distinct ones).
+- Five genuinely new archetypes — `flail`, `prism`, `mortar`, `leech`, `quake`
+  — replacing the reskinned classes, which now use them. Every class carries a
+  prepared `size` field (nothing reads it yet; slower classes are larger).
+- Field of view 480×270 → **672×378**.
+- Mobile: the pick screen sits above the touch stick and hides it while open.
+
+**Why / root causes**
+- **The saber ate friendly bullets** because the enemy-bolt deflect loop had no
+  team check at all — only the player-bullet parry did. Team-tagged creep and
+  turret fire from your own side counted as deflectable.
+- **Servitors seemed to take damage "sometimes"** because player bullets never
+  collided with them at all; only enemy bolts and lasers did.
+- The stuttering saber damage was **not** an optimisation: the arc is narrow and
+  the blade sweeps ~1.1 rev/s, so contact is genuinely intermittent. The linger
+  is what makes it read as continuous.
+- FOV was raised rather than shrinking weapon ranges, which would have punished
+  the long-range weapons. Kept 16:9; a square viewport is a one-line change in
+  `util.js` if wanted.
+
+**Risk**
+- The five new weapons and 17 dodge reactions are all untested by feel; only
+  that they fire, dodge and don't throw.
+- 672×378 is a 1.4× view — worth checking it doesn't make the game feel zoomed
+  out or hurt performance with the larger draw area.
+
+---
+
 ## <2026-08-01 05:40 / session 1 / update #10> - the Arbiter, dodge reactions, servitor overhaul
 
 **Changed**

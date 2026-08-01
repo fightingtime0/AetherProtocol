@@ -119,6 +119,13 @@ const SFX={
   wWob:    {gap:100,f:()=>tone({f0:560,f1:900,d:.11,v:.045,w:'sine'})},
   wRang:   {gap:130,f:()=>{tone({f0:780,f1:1180,d:.1,v:.05,w:'triangle'});tone({f0:1180,f1:780,d:.1,v:.03,w:'triangle',delay:.09});}},
 
+  /* new archetypes */
+  wFlail:  {gap:110,f:()=>{noise({f0:900,f1:200,d:.13,v:.07,ft:'bandpass'});tone({f0:240,f1:90,d:.11,v:.05,w:'triangle'});}},
+  wPrism:  {gap:110,f:()=>{tone({f0:1400,f1:2100,d:.09,v:.045,w:'sine'});tone({f0:2100,f1:1400,d:.09,v:.03,w:'sine',delay:.05});}},
+  wMortar: {gap:200,f:()=>{tone({f0:150,f1:60,d:.22,v:.09,w:'square'});noise({f0:600,f1:120,d:.18,v:.06,ft:'lowpass'});}},
+  wLeech:  {gap:120,f:()=>tone({f0:380,f1:620,d:.14,v:.04,w:'sawtooth'})},
+  wQuake:  {gap:180,f:()=>{noise({f0:400,f1:50,d:.3,v:.14,ft:'lowpass'});tone({f0:90,f1:35,d:.26,v:.11,w:'sine'});}},
+
   /* impact / mechanic voices */
   orbPop:  {gap:70, f:()=>{noise({f0:1600,f1:300,d:.11,v:.07,ft:'bandpass'});tone({f0:300,f1:90,d:.1,v:.05,w:'triangle'});}},
   smiteHit:{gap:140,f:()=>{noise({f0:1100,f1:70,d:.32,v:.16});tone({f0:150,f1:45,d:.28,v:.12,w:'sawtooth'});}},

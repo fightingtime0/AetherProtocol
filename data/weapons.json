@@ -22,7 +22,8 @@
     "spreadStep": 0.13,
     "canCrit": true,
     "ci": 0,
-    "sfx": "wBolt"
+    "sfx": "wBolt",
+    "dodge": "volley"
   },
   {
     "id": "nova",
@@ -48,7 +49,8 @@
     "speed": 95,
     "ci": 2,
     "sfx": "wNova",
-    "r": 2
+    "r": 2,
+    "dodge": "burstring"
   },
   {
     "id": "rail",
@@ -74,7 +76,8 @@
     "speed": 280,
     "r": 2.5,
     "ci": 1,
-    "sfx": "wRail"
+    "sfx": "wRail",
+    "dodge": "blink"
   },
   {
     "id": "seeker",
@@ -95,7 +98,8 @@
       "base": 52,
       "flat": 16
     },
-    "sfx": "wSeeker"
+    "sfx": "wSeeker",
+    "dodge": "rally"
   },
   {
     "id": "frost",
@@ -122,16 +126,17 @@
     "spreadStep": 0.16,
     "slow": 1.2,
     "ci": 1,
-    "sfx": "wFrost"
+    "sfx": "wFrost",
+    "dodge": "frostnova"
   },
   {
     "id": "orbit",
     "glyph": "\u2726",
-    "name": "Orbiting Fang",
+    "name": "Orbit Drones",
     "type": "orbit",
     "resource": "t",
     "cost": 16,
-    "desc": "Summons {blades} fang(s) orbiting wide; each explodes on contact ({boom}px)",
+    "desc": "Summons {blades} orbit drone(s); each detonates on contact ({boom}px)",
     "cd": {
       "base": 3.4,
       "perLvl": 0.1,
@@ -206,7 +211,8 @@
     "r": 3.5,
     "ci": 0,
     "sfx": "wFire",
-    "spark": 1
+    "spark": 1,
+    "dodge": "mine"
   },
   {
     "id": "chain",
@@ -233,7 +239,8 @@
     "sfx": "wChain",
     "speed": 210,
     "r": 2,
-    "ci": 1
+    "ci": 1,
+    "dodge": "dischargeArc"
   },
   {
     "id": "smite",
@@ -257,7 +264,8 @@
       "flat": 1.4
     },
     "sfx": "wSmite",
-    "spark": 1
+    "spark": 1,
+    "dodge": "markspot"
   },
   {
     "id": "venom",
@@ -285,7 +293,8 @@
     "speed": 160,
     "spreadStep": 0.14,
     "ci": 4,
-    "sfx": "wVenom"
+    "sfx": "wVenom",
+    "dodge": "cloud"
   },
   {
     "id": "sigil",
@@ -311,7 +320,8 @@
     "duration": 3,
     "sfx": "wSigil",
     "rampTo": 1.15,
-    "startDps": 0.5
+    "startDps": 0.5,
+    "dodge": "wellDrop"
   },
   {
     "id": "bomb",
@@ -340,7 +350,8 @@
     "r": 4,
     "ci": 5,
     "sfx": "wBomb",
-    "spark": 1
+    "spark": 1,
+    "dodge": "mine"
   },
   {
     "id": "scatter",
@@ -369,7 +380,8 @@
     "ttl": 0.38,
     "ci": 1,
     "sfx": "wScatter",
-    "r": 1.6
+    "r": 1.6,
+    "dodge": "volley"
   },
   {
     "id": "beam",
@@ -388,7 +400,8 @@
     },
     "range": 220,
     "width": 3,
-    "sfx": "wBeam"
+    "sfx": "wBeam",
+    "dodge": "lash"
   },
   {
     "id": "wob",
@@ -418,7 +431,8 @@
     "wobFreq": 6.5,
     "wobAmp": 16,
     "ci": 3,
-    "sfx": "wWob"
+    "sfx": "wWob",
+    "dodge": "volley"
   },
   {
     "id": "rang",
@@ -445,6 +459,135 @@
     "r": 3,
     "ci": 4,
     "sfx": "wRang",
-    "spark": 1
+    "spark": 1,
+    "dodge": "boomerangThrow"
+  },
+  {
+    "id": "flail",
+    "glyph": "\u26d3",
+    "name": "Tether Flail",
+    "type": "flail",
+    "resource": "t",
+    "cost": 8,
+    "desc": "A weight on a chain sweeps a wide arc for {dmg}",
+    "cd": {
+      "base": 1.05,
+      "perLvl": 0.04,
+      "min": 0.6
+    },
+    "dmg": {
+      "base": 26,
+      "perLvl": 0.2
+    },
+    "reach": 38,
+    "arcSpan": 1.5,
+    "sweepTime": 0.28,
+    "ci": 3,
+    "spark": 1,
+    "dodge": "whirl",
+    "sfx": "wFlail"
+  },
+  {
+    "id": "prism",
+    "glyph": "\u25c7",
+    "name": "Prism Splitter",
+    "type": "prism",
+    "resource": "t",
+    "cost": 10,
+    "desc": "A bolt that splits into {shards} shards on impact",
+    "cd": {
+      "base": 1.25,
+      "perLvl": 0.05,
+      "min": 0.7
+    },
+    "dmg": {
+      "base": 16,
+      "perLvl": 0.18
+    },
+    "shards": {
+      "base": 3,
+      "per": 1
+    },
+    "speed": 180,
+    "r": 2.5,
+    "ci": 1,
+    "spark": 1,
+    "dodge": "prismburst",
+    "sfx": "wPrism"
+  },
+  {
+    "id": "mortar",
+    "glyph": "\u2617",
+    "name": "Siege Mortar",
+    "type": "mortar",
+    "resource": "t",
+    "cost": 18,
+    "desc": "Slow shells that land in a {boom}px crater",
+    "cd": {
+      "base": 2.1,
+      "perLvl": 0.07,
+      "min": 1.2
+    },
+    "dmg": {
+      "base": 40,
+      "perLvl": 0.22
+    },
+    "boom": {
+      "base": 26,
+      "flat": 2
+    },
+    "shellTime": 0.9,
+    "r": 4,
+    "ci": 5,
+    "spark": 1,
+    "dodge": "barrage",
+    "sfx": "wMortar"
+  },
+  {
+    "id": "leech",
+    "glyph": "\u2307",
+    "name": "Leech Tendril",
+    "type": "leech",
+    "resource": "t",
+    "cost": 6,
+    "desc": "Latches on for {dmg}/s and heals you for part of it",
+    "cd": {
+      "base": 0.3
+    },
+    "dmg": {
+      "base": 13,
+      "perLvl": 0.16
+    },
+    "range": 90,
+    "healFrac": 0.3,
+    "ci": 4,
+    "dodge": "snap",
+    "sfx": "wLeech"
+  },
+  {
+    "id": "quake",
+    "glyph": "\u2a55",
+    "name": "Seismic Stomp",
+    "type": "quake",
+    "resource": "t",
+    "cost": 14,
+    "desc": "Shockwave ring, {dmg} and staggers what it catches",
+    "cd": {
+      "base": 1.8,
+      "perLvl": 0.07,
+      "min": 1.0
+    },
+    "dmg": {
+      "base": 30,
+      "perLvl": 0.2
+    },
+    "radius": {
+      "base": 40,
+      "flat": 4
+    },
+    "ci": 0,
+    "spark": 1,
+    "dodge": "stomp",
+    "sfx": "wQuake"
   }
 ]

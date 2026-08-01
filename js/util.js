@@ -2,7 +2,11 @@
 /* ============================================================
    util.js — constants, helpers, persistent save, shared state
    ============================================================ */
-const VW=480, VH=270;          // internal render size
+// Internal render size. Raised from 480x270: at the old size you often could
+// not see what was shooting you, and shrinking weapon ranges instead would
+// have punished the long-range weapons. Kept 16:9 so fit() still letterboxes
+// cleanly on normal displays — switch to a square here if you want that.
+const VW=672, VH=378;          // internal render size
 let WW=1280, WH=720;           // world size (set by difficulty)
 
 const $=id=>document.getElementById(id);

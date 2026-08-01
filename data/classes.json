@@ -9,7 +9,8 @@
     "stats": {
       "dmgM": 1.25,
       "maxhp": -20
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "tem",
@@ -23,7 +24,8 @@
       "regen": 1,
       "spd": 0.9,
       "armor": 1
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "hex",
@@ -35,7 +37,8 @@
     "stats": {
       "crit": 0.15,
       "greed": 1.15
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "voi",
@@ -48,7 +51,8 @@
       "spd": 1.18,
       "dashCd": 0.7,
       "maxhp": -15
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "tec",
@@ -63,7 +67,8 @@
       "tMax": 20,
       "shieldMax": 15,
       "maxhp": -10
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "bld",
@@ -77,7 +82,8 @@
       "spd": 1.15,
       "crit": 0.1,
       "maxhp": -15
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "nec",
@@ -89,7 +95,8 @@
     "stats": {
       "droneHpM": 1.6,
       "greed": 1.2
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "art",
@@ -104,7 +111,8 @@
       "tMax": 30,
       "armor": 1,
       "spd": 0.9
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "chr",
@@ -117,74 +125,77 @@
       "cdM": 0.85,
       "tRchM": 1.4,
       "dashCd": 0.75
-    }
+    },
+    "size": 1.0
   },
   {
     "id": "war",
-    "glyph": "\u2694",
-    "name": "Bladewarden",
+    "glyph": "\u26d3",
+    "name": "Chainwarden",
     "cost": 900,
-    "theme": "Sci-fi \u00b7 parrying duelist",
-    "weapon": "saber",
+    "theme": "Sci-fi \u00b7 heavy sweeper, bigger frame",
+    "weapon": "flail",
     "stats": {
-      "maxhp": 25,
+      "maxhp": 35,
       "armor": 1,
-      "spd": 1.05,
-      "tRchM": 1.15
-    }
+      "spd": 0.92
+    },
+    "size": 1.15
   },
   {
     "id": "orb",
-    "glyph": "\u2726",
-    "name": "Fangbinder",
+    "glyph": "\u25c7",
+    "name": "Prismatic",
     "cost": 900,
-    "theme": "Sci-fi \u00b7 summoner of orbiting fangs",
-    "weapon": "orbit",
+    "theme": "Sci-fi \u00b7 splitting light, small frame",
+    "weapon": "prism",
     "stats": {
       "dmgM": 1.1,
-      "cdM": 0.9,
+      "cdM": 0.92,
       "maxhp": -10
-    }
+    },
+    "size": 0.95
   },
   {
     "id": "grv",
-    "glyph": "\u25c8",
-    "name": "Riftwright",
+    "glyph": "\u2617",
+    "name": "Bombardier",
     "cost": 1100,
-    "theme": "Sci-fi \u00b7 zone-control siegebreaker",
-    "weapon": "sigil",
+    "theme": "Sci-fi \u00b7 slow siege artillery, large frame",
+    "weapon": "mortar",
     "stats": {
-      "tMax": 10,
-      "cdM": 0.85,
-      "spd": 0.95
-    }
+      "tMax": 12,
+      "spd": 0.85,
+      "maxhp": 25
+    },
+    "size": 1.2
   },
   {
     "id": "swm",
-    "glyph": "\u2727",
-    "name": "Swarmherd",
+    "glyph": "\u2307",
+    "name": "Bloodleech",
     "cost": 1100,
-    "theme": "Sci-fi \u00b7 servitor commander",
-    "weapon": "seeker",
+    "theme": "Sci-fi \u00b7 sustain duelist",
+    "weapon": "leech",
     "stats": {
-      "droneHpM": 1.5,
+      "regen": 0.8,
       "dmgM": 1.05,
-      "maxhp": 15,
-      "spd": 0.95
-    }
+      "maxhp": 10
+    },
+    "size": 1.0
   },
   {
     "id": "rng",
-    "glyph": "\u21f6",
-    "name": "Longshot",
+    "glyph": "\u2a55",
+    "name": "Earthshaker",
     "cost": 1300,
-    "theme": "Sci-fi \u00b7 piercing marksman",
-    "weapon": "rail",
+    "theme": "Sci-fi \u00b7 shockwave bruiser",
+    "weapon": "quake",
     "stats": {
-      "bspdM": 1.25,
-      "crit": 0.1,
-      "maxhp": -15,
-      "spd": 1.05
-    }
+      "maxhp": 30,
+      "spd": 0.95,
+      "armor": 1
+    },
+    "size": 1.1
   }
 ]
