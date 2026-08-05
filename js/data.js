@@ -118,6 +118,33 @@ function bakeSprite(id,spr){
   SPRC[id]={c:oc,w,h};
 }
 
+/* Human-readable summary of what a relic actually does — the stat blocks are
+   data, so this renders them rather than duplicating the text by hand. */
+const STAT_WORDS={
+  spd:'move speed', dmgM:'damage', cdM:'fire rate', crit:'crit chance',
+  regen:'health regen', greed:'shard gain', dashCd:'dash cooldown',
+  bspdM:'projectile speed', maxhp:'max HP', armor:'armor',
+  shieldMax:'shield', tMax:'charge capacity', tRchM:'recharge rate',
+  droneHpM:'servitor HP', dmgTakenM:'damage taken',
+  auraRegen:'ally regen aura', auraDmg:'ally damage aura', tithe:'ally shard tithe',
+  mag:'pickup radius'
+};
+function passiveText(ps){
+  if(ps.desc)return ps.desc;
+  const out=[];
+  for(const k in (ps.stats||{})){
+    const v=ps.stats[k], name=STAT_WORDS[k]||k;
+    // multiplicative stats hover around 1, additive ones do not
+    if(k==='cdM'||k==='dashCd'||k==='dmgTakenM')
+      out.push((v<1?'−':'+')+Math.round(Math.abs(1-v)*100)+'% '+name);
+    else if(Math.abs(v-1)<0.9&&['dmgM','spd','greed','bspdM','tRchM','droneHpM'].includes(k))
+      out.push((v>=1?'+':'−')+Math.round(Math.abs(v-1)*100)+'% '+name);
+    else out.push((v>=0?'+':'')+v+' '+name);
+  }
+  if(ps.heal)out.push('heals '+ps.heal);
+  return out.join(' · ')||'—';
+}
+
 /* ---------------- loader ---------------- */
 async function fetchJson(path){
   const r=await fetch(path);

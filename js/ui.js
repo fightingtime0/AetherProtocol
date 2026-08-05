@@ -118,11 +118,15 @@ function hidePickUI(){ $('scrPick').classList.add('hidden');
 }
 
 /* ---------------- character editor ---------------- */
-const ed={cv:$('edGrid'),cell:24,painting:false,color:'#4ef0e8',showHB:true,px:null};
+// ed.frame selects which idle frame is being painted; ed.px holds both.
+const ed={cv:$('edGrid'),cell:24,painting:false,color:'#4ef0e8',showHB:true,px:null,
+  frames:null,frame:0};
 const EDCOLORS=['#4ef0e8','#ff4fd8','#ffd35c','#ff5c47','#7a5cff','#e8ecff','#c9cfe8','#6b7396','#2b1f4e','#141a2e','#7cff6b','#ff9d3c','#ffffff','#000000'];
 function edInit(){
   renderClassRow();
-  ed.px=save.sprite.map(r=>r.slice());
+  ed.frames=[save.sprite.map(r=>r.slice()), (save.sprite2||save.sprite).map(r=>r.slice())];
+  ed.frame=0; ed.px=ed.frames[0];
+  renderFrameTabs();
   const pal=$('edPal'); pal.innerHTML='';
   EDCOLORS.forEach(c=>{const s=document.createElement('div');s.className='swatch';
     s.style.background=c; s.onclick=()=>{ed.color=c;selSwatch(s);}; pal.appendChild(s);});
@@ -130,6 +134,31 @@ function edInit(){
   er.onclick=()=>{ed.color=null;selSwatch(er);};pal.appendChild(er);
   selSwatch(pal.firstChild); ed.color=EDCOLORS[0];
   edDraw();
+}
+/* Frame tabs + the "just use one" switch. Two frames is the default; turning
+   the animation off simply stops the second frame being used anywhere. */
+function renderFrameTabs(){
+  const row=$('edFrames'); if(!row)return;
+  row.innerHTML='';
+  ed.frames.forEach((_,i)=>{
+    const b=document.createElement('button');
+    b.className='chip'+(ed.frame===i?' sel':'');
+    b.textContent='FRAME '+(i+1);
+    b.onclick=()=>{ ed.frames[ed.frame]=ed.px; ed.frame=i; ed.px=ed.frames[i];
+      renderFrameTabs(); edDraw(); };
+    row.appendChild(b);
+  });
+  const cp=document.createElement('button');
+  cp.className='chip'; cp.textContent='COPY →';
+  cp.title='copy this frame over the other one';
+  cp.onclick=()=>{ const other=ed.frame===0?1:0;
+    ed.frames[other]=ed.px.map(r=>r.slice()); toast('Frame copied'); };
+  row.appendChild(cp);
+  const an=document.createElement('button');
+  an.className='chip'+(save.anim?' selc':'');
+  an.textContent=save.anim?'ANIMATE: ON':'ANIMATE: OFF';
+  an.onclick=()=>{ save.anim=!save.anim; persist(); renderFrameTabs(); };
+  row.appendChild(an);
 }
 function selSwatch(s){[...$('edPal').children].forEach(x=>x.classList.remove('sel'));s.classList.add('sel');}
 function edDraw(){
@@ -162,8 +191,13 @@ ed.cv.addEventListener('pointermove',e=>{if(ed.painting)edPaint(e);});
 addEventListener('pointerup',()=>ed.painting=false);
 $('btnEdHitbox').onclick=()=>{ed.showHB=!ed.showHB;
   $('btnEdHitbox').textContent='Hitbox: '+(ed.showHB?'ON':'OFF');edDraw();};
-$('btnEdReset').onclick=()=>{ed.px=DEFAULT_MAGE.map(r=>r.slice());edDraw();};
-$('btnEdSave').onclick=()=>{save.sprite=ed.px.map(r=>r.slice());persist();toast('Sprite saved');show('scrTitle');};
+$('btnEdReset').onclick=()=>{ed.px=DEFAULT_MAGE.map(r=>r.slice());
+  ed.frames[ed.frame]=ed.px;edDraw();};
+$('btnEdSave').onclick=()=>{
+  ed.frames[ed.frame]=ed.px;
+  save.sprite=ed.frames[0].map(r=>r.slice());
+  save.sprite2=ed.frames[1].map(r=>r.slice());
+  persist();toast('Sprite saved');show('scrTitle');};
 $('btnEdBack').onclick=()=>show('scrTitle');
 
 /* ---------------- touch ---------------- */
@@ -213,10 +247,13 @@ function renderTrainUI(){
     const b=document.createElement('button');
     b.className='chip'+(train.wpn===id?' sel':'');
     b.innerHTML=def.g+' '+def.n;
+    const wtext=()=>{ $('trPasDesc').textContent=def.n+' — '+def.d(train.lvl); };
+    b.title=def.d(1);
+    b.onmouseenter=wtext; b.onfocus=wtext;
     b.onclick=(ev)=>{
       if(ev.shiftKey){ if(!train.slots.includes(id))train.slots.push(id); }
       else train.wpn=id;
-      renderTrainUI();
+      wtext(); renderTrainUI();
     };
     wr.appendChild(b);
   });
@@ -234,11 +271,15 @@ function renderTrainUI(){
     const b=document.createElement('button');
     b.className='chip'+(n?' selc':'');
     b.innerHTML=ps.glyph+' '+ps.name+(n?' ×'+n:'');
-    b.title=ps.desc||'';
+    const meaning=passiveText(ps)+(ps.style?'  ['+ps.style.toUpperCase()+' style]':'');
+    b.title=meaning;
+    const showMeaning=()=>{ $('trPasDesc').textContent=ps.name+' — '+meaning; };
+    b.onmouseenter=showMeaning;
+    b.onfocus=showMeaning;
     b.onclick=(ev)=>{
       if(ev.shiftKey){ const i=train.passives.lastIndexOf(ps.id); if(i>=0)train.passives.splice(i,1); }
       else train.passives.push(ps.id);
-      renderTrainUI();
+      showMeaning(); renderTrainUI();
     };
     pr.appendChild(b);
   });
@@ -249,7 +290,7 @@ function renderTrainUI(){
 function startTraining(){
   saveName(); resetNet(); role='solo'; myId=0;
   show(null); $('hud').classList.remove('hidden');
-  newSim([{id:0,name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}],{training:true});
+  newSim([{id:0,name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls}],{training:true});
   const me=S.players.get(0);
   me.weapons=[{id:train.wpn,lvl:train.lvl,rar:train.rar,cd:0}];
   train.slots.forEach(id=>me.weapons.push({id,lvl:train.lvl,rar:train.rar,cd:0}));
@@ -264,7 +305,10 @@ addEventListener('keydown',e=>{
     $('hud').classList.add('hidden'); renderTrainUI(); show('scrTrain'); }
 });
 
-function show(id){['scrTitle','scrSetup','scrShop','scrBoard','scrPick','scrDeath','scrEditor','scrLobby'].forEach(s=>$(s).classList.add('hidden'));
+// every overlay must be listed here or show(null) cannot dismiss it — that is
+// exactly how the training screen got stuck on top of the game
+function show(id){['scrTitle','scrSetup','scrShop','scrBoard','scrPick','scrDeath',
+  'scrEditor','scrLobby','scrTrain'].forEach(s=>$(s).classList.add('hidden'));
   if(id)$(id).classList.remove('hidden');}
 function saveName(){const n=$('nameInput').value.trim().toUpperCase().slice(0,12);
   save.name=n||'PILOT-'+irnd(10,99);persist();return save.name;}
@@ -273,7 +317,7 @@ function refreshTitle(){ $('tBest').textContent=save.best||'—'; $('tShards').t
 function beginSolo(){
   saveName(); resetNet(); role='solo'; myId=0;
   show(null); $('hud').classList.remove('hidden');
-  newSim([{id:0,name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}]);
+  newSim([{id:0,name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls}]);
   const me=S.players.get(0);
   myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
   V=null; mode='play'; musicStart();

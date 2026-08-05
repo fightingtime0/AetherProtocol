@@ -8,7 +8,11 @@
 /* ---------------- players ---------------- */
 function mkPlayer(id,name,sprite,cls){
   const c=CLS(cls), PB=BAL.player;
-  const p={id,name,sprite,img:spriteToCanvas(sprite),
+  // imgs[] holds every idle frame; img stays the first for anything that
+  // still expects a single canvas
+  const frames=Array.isArray(sprite&&sprite[0]&&sprite[0][0])?sprite:[sprite];
+  const imgs=frames.map(f=>spriteToCanvas(f));
+  const p={id,name,sprite:frames[0],imgs,img:imgs[0],
     x:WW/2+rnd(-30,30),y:WH/2+rnd(-30,30),r:PB.hitboxRadius,
     hp:PB.hp,maxhp:PB.hp,inv:0,dead:false,shards:0,pickUntil:0,pickInvUntil:0,pickOpts:null,cls:c.id,
     t:PB.t.start,tMax:PB.t.start,tLock:false,
@@ -96,7 +100,7 @@ function newSim(playersInfo,opts){
      pvp:!!(opts&&opts.pvp), persistent:!!(opts&&opts.persistent),
      training:!!(opts&&opts.training)};
   playersInfo.forEach(pi=>{
-    const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
+    const p=mkPlayer(pi.id,pi.name,pi.sprites||pi.sprite,pi.cls);
     applyMetaObj(p, pi.id===myId?save.meta:pi.meta);
     S.players.set(pi.id,p);
   });
@@ -251,6 +255,7 @@ function advanceServitors(p){
 function onDodge(p){
   if(!p||p.dead)return;
   advanceServitors(p);          // dodging is the swarm's order button
+  refreshLasersOn(p);           // and it breaks any beam currently tracking you
   // Weapons flagged dodgeAtEnd land their effect when the dash FINISHES, so it
   // reads as "dodge, then strike" rather than firing from where you started.
   p.dodgeEndT=BAL.player.dashDuration;
@@ -893,7 +898,18 @@ function hostUpdate(dt){
          burnLinger seconds even after the blade sweeps past. Without that the
          damage visibly stutters — the target is plainly inside the blades but
          only takes a hit on the frames the arc happens to overlap it. */
+      /* The BURN covers everything inside the blades' reach, every frame —
+         the blades are a whirling field, not a single edge. The ARC above
+         still governs the burst, so entering the swing is what pays out the
+         banked parry damage. Sampling the burn on the arc made it land on
+         barely half the frames and read as stuttering. */
       const burn=p.sabBurn||(p.sabBurn=new Map());
+      for(const e of S.en){ if(e.hp<=0)continue;
+        if(Math.hypot(e.x-p.x,e.y-p.y)<=CB.saber.reach+e.r)
+          burn.set('e'+e.id,CB.saber.burnLinger||0.3); }
+      for(const q of foePlayers(p)){
+        if(Math.hypot(q.x-p.x,q.y-p.y)<=CB.saber.reach+q.r)
+          burn.set('p'+q.id,CB.saber.burnLinger||0.3); }
       for(const [,key] of contact) burn.set(key,CB.saber.burnLinger||0.3);
       if(burn.size){
         const tickDmg=CB.saber.dps*dt*p.dmgBoost;
@@ -908,7 +924,6 @@ function hostUpdate(dt){
           burn.set(key,t2);
           const rec=byKey.get(key); if(!rec)continue;
           const [o,isPlayer]=rec;
-          if(burst&&!wasIn.has(key))continue;   // already took the entry burst
           if(isPlayer)hurt(o,tickDmg,p.id,true); else damageE(o,tickDmg,p.id,true);
           burned=true;
         }
@@ -983,7 +998,11 @@ function hostUpdate(dt){
       my=owner.y+Math.sin(dn.roamA)*(DR.roamRadius||34);
     }
     const mdx=mx-dn.x, mdy=my-dn.y, md=Math.hypot(mdx,mdy);
-    if(md>2){ const sp=(dn.mode==='hunt'?DR.speed:DR.returnSpeed);
+    if(md>2){
+      // DERIVED STAT: servitor movement scales off the owner's projectile
+      // speed stat — see BAL.combat.drones.speedScalesOff
+      const scale=(owner&&DR.speedScalesOff)?(owner.st[DR.speedScalesOff]||1):1;
+      const sp=(dn.mode==='hunt'?DR.speed:DR.returnSpeed)*scale;
       dn.x+=mdx/md*sp*dt; dn.y+=mdy/md*sp*dt; }
     collideObstacles(dn);
     dn.hitCd=Math.max(0,dn.hitCd-dt);

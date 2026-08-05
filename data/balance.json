@@ -88,11 +88,12 @@
       "selfBoomRadius": 18,
       "selfBoomMult": 2.5,
       "modeSeconds": 3,
-      "guardStand": 18,
-      "roamRadius": 34,
+      "guardStand": 38,
+      "roamRadius": 20,
       "shotInterval": 1.1,
       "shotSpeed": 120,
-      "shotDmgFrac": 0.8
+      "shotDmgFrac": 0.8,
+      "speedScalesOff": "bspdM"
     },
     "contactDamage": {
       "boss": 24,

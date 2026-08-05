@@ -348,8 +348,10 @@ function render(){
     const blink=invF&&Math.floor(now()/60)%2===0;
     if(!blink||p.dead){
       let img=null;
-      if(isHost)img=p.img;
-      else{const r=clientRoster.get(p.id);img=r?r.img:spriteToCanvas(DEFAULT_MAGE);}
+      if(isHost){ const fr=p.imgs||[p.img]; img=fr[animFrame(fr.length)]; }
+      else{ const r=clientRoster.get(p.id);
+        const fr=r&&r.imgs?r.imgs:(r?[r.img]:null);
+        img=fr?fr[animFrame(fr.length)]:spriteToCanvas(DEFAULT_MAGE); }
       drawImgC(img,px,py,0);
     }
     // orbiting fangs

@@ -61,6 +61,16 @@ const DEFAULT_MAGE=(()=>{ // 11x11
   return rows.map(r=>[...r].map(c=>P[c]||null));
 })();
 if(!save.sprite) save.sprite=DEFAULT_MAGE.map(r=>r.slice());
+/* Idle animation. save.sprite stays the FIRST frame (so old saves and the
+   network format keep working untouched); save.sprite2 is the optional second
+   frame and save.anim toggles cycling. Two frames by default. */
+if(!save.sprite2) save.sprite2=save.sprite.map(r=>r.slice());
+if(save.anim===undefined) save.anim=true;
+const ANIM_MS=380;                       // per-frame dwell for the idle cycle
+function spriteFrames(){ return save.anim?[save.sprite,save.sprite2]:[save.sprite]; }
+/* Which frame should be showing right now. Shared by the editor preview, the
+   local player and remote players so everyone animates in step. */
+function animFrame(n){ return n<=1?0:Math.floor(now()/ANIM_MS)%n; }
 
 function spriteToCanvas(px){ // px: 11x11 array of color|null
   const oc=document.createElement('canvas'); oc.width=11; oc.height=11;

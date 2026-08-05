@@ -122,7 +122,7 @@ function newMobaSim(playersInfo){
      moba:true, mobaOver:0, creepT:MOBA.creepInterval, kills:[0,0],
      worldBoss:0, wbWasHive:0, wbLastHitBy:undefined, wbX:0, wbY:0};
   playersInfo.forEach(pi=>{
-    const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
+    const p=mkPlayer(pi.id,pi.name,pi.sprites||pi.sprite,pi.cls);
     applyMetaObj(p, (pi.id===myId&&!pi.bot)?save.meta:pi.meta);
     p.team=(pi.team===1)?1:0;
     p.bot=!!pi.bot;

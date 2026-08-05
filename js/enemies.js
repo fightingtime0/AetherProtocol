@@ -70,25 +70,33 @@ function structLaser(e,tgt,dt,cfg){
   const d=Math.hypot(tgt.x-e.x,tgt.y-e.y)||1;
   if(!cfg.laserDps||d>cfg.laserRange){
     e.laserOn=0; e.llen=0; e.laserTgt=undefined; e.laserHeat=0; return; }
-  /* The beam winds up: it opens weak and bites harder the longer it stays
-     locked on one target, and resets the moment it switches or breaks off.
-     That makes stepping out of the beam meaningful instead of a flat tax. */
+  /* The beam winds up the longer it stays on one target, and — since it is a
+     physical lance, not a hitscan — it SWINGS to a new one rather than
+     teleporting. First acquisition snaps; every switch after that sweeps
+     across at turnRate, cutting whatever it passes over on the way. */
   const R=MOBA.laserRamp;
   const tid=(tgt.weapons?'p':tgt.drone?'d':'e')+(tgt.id!==undefined?tgt.id:'?');
+  const want=Math.atan2(tgt.y-e.y,tgt.x-e.x);
   if(e.laserTgt!==tid){ e.laserTgt=tid; e.laserHeat=0; }
+  if(e.laserAim===undefined){ e.laserAim=want; }   // first lock snaps on
+  else{
+    let da=want-e.laserAim;
+    while(da>Math.PI)da-=TAU; while(da<-Math.PI)da+=TAU;
+    const step=(R.turnRate||1.6)*dt;
+    e.laserAim+=clamp(da,-step,step);
+  }
   e.laserHeat=Math.min(1,(e.laserHeat||0)+dt/R.time);
   const heat=R.from+(R.to-R.from)*e.laserHeat;
-  const aim=Math.atan2(tgt.y-e.y,tgt.x-e.x);
-  e.lang=aim; e.llen=Math.min(d,cfg.laserRange); e.laserOn=1;
+  const aim=e.laserAim;
+  e.lang=aim; e.llen=cfg.laserRange; e.laserOn=1;
   const lx=Math.cos(aim), ly=Math.sin(aim), w=cfg.laserWidth||4;
   const bite=o=>{
     const ex=o.x-e.x, ey=o.y-e.y, proj=ex*lx+ey*ly;
     if(proj<0||proj>cfg.laserRange+o.r)return false;
     return Math.abs(ex*ly-ey*lx)<w+o.r;
   };
-  const span=dotReady(e,dt);   // shared DoT cadence — see dotReady()
-  if(!span)return;
-  const amt=cfg.laserDps*heat*span;
+  // burns EVERY frame now — the cadence made it feel limp
+  const amt=cfg.laserDps*heat*dt;
   for(const q of S.players.values()){
     if(q.dead||!hostile(e.team,q.team))continue;
     if(q.id!==myId&&!q.bot)continue;             // remote humans self-report
@@ -98,9 +106,19 @@ function structLaser(e,tgt,dt,cfg){
     if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
     if(bite(o))damageE(o,amt,undefined,true);
   }
-  for(const dn of S.dr){ // servitors burn in the beam like anything else
+  for(const dn of S.dr){
     if(dn.hp<=0||!hostile(e.team,dn.team))continue;
     if(bite(dn))dn.hp-=amt;
+  }
+}
+/* A dodge breaks a beam's lock: every emitter currently tracking this player
+   drops its target and heat, so it has to re-acquire (and re-ramp). */
+function refreshLasersOn(p){
+  if(!S||!S.en)return;
+  const key='p'+p.id;
+  for(const e of S.en){
+    if(e.laserTgt===key){ e.laserTgt=undefined; e.laserHeat=0; }
+    if(e.laser2Tgt===key){ e.laser2Tgt=undefined; e.laser2Heat=0; }
   }
 }
 /* Second lance for the Arbiter. Same maths as structLaser but writes to its
@@ -111,18 +129,22 @@ function structLaser2(e,tgt,dt,cfg){
   if(!cfg.laserDps||d>cfg.laserRange){ e.laser2On=0; e.llen2=0; e.laser2Tgt=undefined; e.laser2Heat=0; return; }
   const R=MOBA.laserRamp;
   const tid=(tgt.weapons?'p':tgt.drone?'d':'e')+(tgt.id!==undefined?tgt.id:'?');
+  const want=Math.atan2(tgt.y-e.y,tgt.x-e.x);
   if(e.laser2Tgt!==tid){ e.laser2Tgt=tid; e.laser2Heat=0; }
+  if(e.laser2Aim===undefined){ e.laser2Aim=want; }
+  else{ let da=want-e.laser2Aim;
+    while(da>Math.PI)da-=TAU; while(da<-Math.PI)da+=TAU;
+    const step=(R.turnRate||1.6)*dt;
+    e.laser2Aim+=clamp(da,-step,step); }
   e.laser2Heat=Math.min(1,(e.laser2Heat||0)+dt/R.time);
   const heat=R.from+(R.to-R.from)*e.laser2Heat;
-  const aim=Math.atan2(tgt.y-e.y,tgt.x-e.x);
-  e.lang2=aim; e.llen2=Math.min(d,cfg.laserRange); e.laser2On=1;
+  const aim=e.laser2Aim;
+  e.lang2=aim; e.llen2=cfg.laserRange; e.laser2On=1;
   const lx=Math.cos(aim), ly=Math.sin(aim), w=cfg.laserWidth||4;
   const bite=o=>{ const ex=o.x-e.x, ey=o.y-e.y, proj=ex*lx+ey*ly;
     if(proj<0||proj>cfg.laserRange+o.r)return false;
     return Math.abs(ex*ly-ey*lx)<w+o.r; };
-  const span=dotReady2(e,dt);
-  if(!span)return;
-  const amt=cfg.laserDps*heat*span;
+  const amt=cfg.laserDps*heat*dt;   // every frame, same as the primary lance
   for(const q of S.players.values()){
     if(q.dead||!hostile(e.team,q.team))continue;
     if(q.id!==myId&&!q.bot)continue;

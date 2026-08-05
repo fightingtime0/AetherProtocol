@@ -130,7 +130,8 @@
   "laserRamp": {
     "time": 2.2,
     "from": 0.35,
-    "to": 1.75
+    "to": 1.75,
+    "turnRate": 1.6
   },
   "worldBoss": {
     "_comment": "Neutral third team. Sweeps the map diagonally after creep wave 15; if ignored it roots and becomes a hive-nexus.",

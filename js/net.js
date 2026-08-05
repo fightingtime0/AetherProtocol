@@ -293,7 +293,7 @@ function startHost(){
   renderDiffChips('lobbyDiffRow','lobbyDiffDesc',()=>bcastRoster());
   setStatus('Opening circuit…');
   conns=[]; nextPid=1; myTeam=0;
-  lobby.players=[{id:0,name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls,team:0}];
+  lobby.players=[{id:0,name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls,team:0}];
   renderModeChips(); renderTeamUI(lobby.players);
   myId=0; updatePeerList();
   openHostPeer();
@@ -346,7 +346,7 @@ function hostOnData(c,d){
     // new allies default to the emptier side so a siege lobby self-balances
     const n0=lobby.players.filter(p=>(p.team||0)===0).length;
     const n1=lobby.players.filter(p=>(p.team||0)===1).length;
-    lobby.players.push({id:c._pid,name:d.name,sprite:d.sprite,meta:d.meta||{},cls:d.cls||CLASSES[0].id,
+    lobby.players.push({id:c._pid,name:d.name,sprite:d.sprite,sprites:d.sprites,meta:d.meta||{},cls:d.cls||CLASSES[0].id,
       team:n1<n0?1:0});
     conns.push(c);
     c.send({t:'wl',id:c._pid,obstacles,ww:WW,wh:WH,diff:diffKey,inGame:mode==='play'});
@@ -388,7 +388,7 @@ function pruneStalePeers(){
   }
 }
 function bcastRoster(){ bcast({t:'ros',
-  players:lobby.players.map(p=>({id:p.id,name:p.name,sprite:p.sprite,team:p.team||0})),
+  players:lobby.players.map(p=>({id:p.id,name:p.name,sprite:p.sprite,sprites:p.sprites,team:p.team||0})),
   diff:DIFF().name, mode:lobbyMode}); }
 function startJoin(){
   checkRelay(); // so the join timeout can name the cause instead of guessing
@@ -429,7 +429,7 @@ function connectTo(code){
       dc=c; conns=[c];
       c.on('open',()=>{ clearLinkWatch(); logIcePath(c,'host link');
         setStatus('Linked! Waiting for host to start…');
-        c.send({t:'hi',name:save.name,sprite:save.sprite,meta:save.meta,cls:save.cls}); });
+        c.send({t:'hi',name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls}); });
       c.on('data',d=>clientOnData(c,d));
       // conns[0]!==c means a retry already replaced this connection — a
       // late event from the discarded one must not clear the new watch
@@ -450,7 +450,11 @@ function clientOnData(c,d){
       setStatus('Linked as ally #'+d.id+'. Waiting for host…');
       if(d.inGame){enterPlayClient();} break;
     case 'ros': clientRoster.clear();
-      d.players.forEach(p=>clientRoster.set(p.id,{name:p.name,img:spriteToCanvas(p.sprite),team:p.team||0}));
+      d.players.forEach(p=>{
+        const frames=p.sprites&&p.sprites.length?p.sprites:[p.sprite];
+        const imgs=frames.map(f=>spriteToCanvas(f));
+        clientRoster.set(p.id,{name:p.name,img:imgs[0],imgs,team:p.team||0});
+      });
       if(d.diff)$('lobbyDiffShow').textContent='Difficulty: '+d.diff;
       $('peerList').textContent='Linked: '+d.players.map(p=>p.name).join(', ');
       lobbyMode=d.mode||'coop';
