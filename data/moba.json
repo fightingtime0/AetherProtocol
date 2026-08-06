@@ -119,13 +119,16 @@
     "offsetFromCentre": 0.11,
     "laneOffsetY": 0.34,
     "radius": 26,
-    "creepCost": 140,
-    "chestCost": 90,
+    "creepCost": 25,
+    "chestCost": 75,
+    "wpnCost": 100,
     "creepCooldown": 25,
     "chestCooldown": 30,
+    "wpnCooldown": 30,
     "mercHpMul": 1.9,
     "mercCount": 2,
-    "mercKind": "merc"
+    "mercKind": "merc",
+    "maxWeapons": 2
   },
   "laserRamp": {
     "time": 2.2,
@@ -134,24 +137,33 @@
     "turnRate": 1.6
   },
   "worldBoss": {
-    "_comment": "Neutral third team (INFECTED MOTHERSHIP). Roams the middle of the map after creep wave 15; if ignored it roots and becomes a HIVE NEXUS.",
+    "_comment": "Neutral third team (INFECTED MOTHERSHIP). Roams the middle of the map after creep wave 15. hiveGrow is a 0-100 meter, not a binary idle timer: it always rises, and any hit on the core/shards knocks it back proportional to the damage dealt (as a % of the core's max HP) — so it takes sustained chip damage, not one big hit, to hold off. At 100 it roots into a HIVE NEXUS.",
     "afterCreepWave": 15,
     "sweepSpeed": 26,
     "roamW": 900,
     "roamH": 260,
-    "idleToHive": 15,
-    "hiveOrbitRadius": 90,
-    "hiveOrbitSpeed": 0.6,
-    "hiveCreepEvery": 8,
-    "hiveMaxCreeps": 8,
+    "hiveGrowTime": 50,
+    "hiveGrowDmgMult": 1,
     "chestsOnDeath": 6,
     "hiveChestsOnDeath": 12,
     "xpReward": 600,
     "hiveXpReward": 1200,
     "laserTargets": 2,
-    "swarmMax": 4,
-    "swarmEvery": 6,
+    "swarmEvery": 10,
+    "swarmBurst": 4,
     "swarmChaseRadius": 90,
-    "swarmRoamRadius": 70
+    "swarmRoamRadius": 70,
+    "hiveAssault": {
+      "_comment": "Once rooted, the hive sends assault waves down BOTH lanes at once, faster than the normal team creepInterval (30s).",
+      "interval": 15,
+      "chaseDronesPerWave": 3,
+      "summonerPerWave": 1,
+      "siegeCreepEvery": 3,
+      "summonerInterval": 4,
+      "summonerDrones": 1,
+      "summonerAggro": 160,
+      "summonerDamage": 14,
+      "siegeDropDrones": 2
+    }
   }
 }

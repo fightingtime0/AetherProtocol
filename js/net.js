@@ -146,7 +146,8 @@ function snap(){
     Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0,
     e.team===undefined?-1:e.team,
     e.laserOn?Math.round((e.lang||0)*100):0,e.laserOn?Math.round(e.llen||0):0,
-    e.laser2On?Math.round((e.lang2||0)*100):0,e.laser2On?Math.round(e.llen2||0):0]);
+    e.laser2On?Math.round((e.lang2||0)*100):0,e.laser2On?Math.round(e.llen2||0):0,
+    Math.round(e.hiveGrow||0)]);
   const eb=S.eb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.r,b.team===undefined?-1:b.team]);
   const pb=S.pb.map(b=>[b.id,Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy),b.ci,b.owner]);
   const it=S.it.map(i=>[i.k,Math.round(i.x),Math.round(i.y)]);
@@ -156,7 +157,9 @@ function snap(){
   const ar=S.ar.map(a2=>[Math.round(a2.x1),Math.round(a2.y1),Math.round(a2.x2),Math.round(a2.y2)]);
   const pu=(S.pu||[]).map(u=>[Math.round(u.x),Math.round(u.y),Math.round(u.r)]);
   const dn=(S.dnQ||[]).splice(0,20); // queued damage-number pops, like sx below
-  const shp=S.shops?S.shops.map(o=>[Math.round(o.x),Math.round(o.y),o.team,o.k==='merc'?0:1,Math.round(o.cd)]):0;
+  // kind codes: 0=merc 1=wpn 2=chest — matches SHOP_ICON/SHOP_LABEL order in render.js
+  const shp=S.shops?S.shops.map(o=>[Math.round(o.x),Math.round(o.y),o.team,
+    o.k==='merc'?0:o.k==='wpn'?1:2,Math.round(o.cd)]):0;
   const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r),z.col||0]);
   let ob=0;
   if(S.obj)ob=[OBJ_TYS.indexOf(S.obj.ty),Math.round(S.obj.prog),Math.round(S.obj.goal),
@@ -210,7 +213,7 @@ function applySnap(s){
     }}
   for(const id of [...V.players.keys()]) if(!seenP.has(id))V.players.delete(id);
   const seenE=new Set();
-  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd,tm,lang,llen,lang2,llen2]=a; seenE.add(id);
+  for(const a of s.en){const [id,ti,x,y,hpp,fl,tel,scl,shd,tm,lang,llen,lang2,llen2,hg]=a; seenE.add(id);
     let e=V.en.get(id);
     if(!e){e={id,ti,dx:x,dy:y};V.en.set(id,e);}
     e.px=e.dx;e.py=e.dy;
@@ -218,7 +221,8 @@ function applySnap(s){
     e.tx=x;e.ty=y;e.st=t;e.hpp=hpp;e.flash=fl;e.tel=tel;e.scl=scl||1;e.shielded=!!shd;
     e.team=(tm===undefined||tm<0)?undefined:tm;
     e.lang=(lang||0)/100; e.llen=llen||0; e.laserOn=!!llen;
-    e.lang2=(lang2||0)/100; e.llen2=llen2||0; e.laser2On=!!llen2;}
+    e.lang2=(lang2||0)/100; e.llen2=llen2||0; e.laser2On=!!llen2;
+    e.hiveGrow=hg||0;}
   for(const id of [...V.en.keys()]) if(!seenE.has(id))V.en.delete(id);
   V.eb=s.eb; V.pb=s.pb; V.it=s.it; V.dr=s.dr||[]; V.zn=s.zn||[]; V.obj=s.ob||0;
   V.mk=s.mk||[]; V.ar=s.ar||[]; V.pu=s.pu||[]; V.shp=s.shp||0; // smite marks, pulse rings, chain arcs, shard pads

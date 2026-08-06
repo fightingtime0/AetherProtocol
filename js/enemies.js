@@ -278,6 +278,22 @@ function enemyAct(e,dt){
      // Boss-wave miniboss: the guardian's volley + telegraphed lunge, but it
      // MARCHES the lane like a creep instead of holding a post, and has no
      // laser. st: 0 advance · 1 windup · 2 lunge · 3 recovery.
+     // Data-flagged variants (the hive siege creep) shed a burst of chase
+     // drones every 10% of their own max HP lost — checked generically here
+     // so the AI stays shared and any future shedDrones enemy needs zero
+     // engine changes.
+     if(ET[ETI[e.k]].shedDrones){
+       if(e.hpMilestone===undefined)e.hpMilestone=100;
+       const hpPct=e.hp/e.maxhp*100, WB=MOBA.worldBoss;
+       while(e.hp>0&&e.hpMilestone-10>=hpPct){
+         e.hpMilestone-=10;
+         for(let i=0;i<((WB.hiveAssault&&WB.hiveAssault.siegeDropDrones)||2);i++){
+           const sp=mkTeamEnt('spore',e.team,e.x+rnd(-14,14),e.y+rnd(-14,14));
+           sp.wild=1; sp.goalX=e.goalX; sp.goalY=e.goalY; sp.ph=rnd(0,TAU);
+           S.en.push(sp);
+         }
+       }
+     }
      e.laserOn=0; e.llen=0;
      e.tpT-=dt;
      if(e.st===1){ e.flash=.05; e.stT-=dt; if(e.stT<=0){ e.st=2; e.stT=L.chargeTime; } }
@@ -351,10 +367,12 @@ function enemyAct(e,dt){
      }else mv(dx/d,dy/d,.7);                       // core gone — fight on alone
      if(e.cd<=0){ e.cd=1.5; ebul(e.x,e.y,aim,74,4,1.5,e.team,MOBA.turret.damage); }
      break; }
-   case 'wardswarm':{ // weak mothership escort: chases anything close, otherwise
-                       // drifts in a lazy orbit near wherever the mothership is now
+   case 'wardswarm':{ // weak hive drone: chases anything close, otherwise either
+                       // drifts near whatever it's escorting (escortOf) or, with
+                       // no home to speak of, marches toward goalX/goalY like a
+                       // creep — that's how the post-hive assault waves use it
      const WB=MOBA.worldBoss;
-     const home=S.en.find(c=>c.id===e.escortOf&&c.hp>0);
+     const home=e.escortOf!==undefined?S.en.find(c=>c.id===e.escortOf&&c.hp>0):null;
      let tgt=null,bd=(WB.swarmChaseRadius||90)**2;
      for(const q of S.players.values()){ if(q.dead||!hostile(e.team,q.team))continue;
        const dd=(q.x-e.x)**2+(q.y-e.y)**2; if(dd<bd){bd=dd;tgt=q;} }
@@ -369,7 +387,37 @@ function enemyAct(e,dt){
        const tx=home.x+Math.cos(e.ph)*r, ty=home.y+Math.sin(e.ph)*r;
        const ddx=tx-e.x, ddy=ty-e.y, dd2=Math.hypot(ddx,ddy)||1;
        e.x+=ddx/dd2*e.spd*sm*dt; e.y+=ddy/dd2*e.spd*sm*dt;
+     }else if(e.goalX!==undefined){
+       const gx=e.goalX-e.x, gy=e.goalY-e.y, gd=Math.hypot(gx,gy)||1;
+       if(gd>10){ e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt; }
      }
+     break; }
+   case 'wardsummoner':{ // hive assault creep: marches its lane, fighting back
+                          // at anything close, and periodically sheds its own
+                          // wardswarm escort as it goes — a hostile mirror of
+                          // the player's Chaos Servitors weapon
+     const WB=MOBA.worldBoss, HA=WB.hiveAssault||{};
+     e.cd-=dt;
+     if(e.cd<=0){
+       e.cd=HA.summonerInterval||4;
+       for(let i=0;i<(HA.summonerDrones||1);i++){
+         const sp=mkTeamEnt('spore',e.team,e.x+rnd(-14,14),e.y+rnd(-14,14));
+         sp.wild=1; sp.escortOf=e.id; sp.goalX=e.goalX; sp.goalY=e.goalY; sp.ph=rnd(0,TAU);
+         S.en.push(sp);
+       }
+     }
+     let tgt=null,bd=(HA.summonerAggro||160)**2;
+     for(const q of S.players.values()){ if(q.dead||!hostile(e.team,q.team))continue;
+       const dd=(q.x-e.x)**2+(q.y-e.y)**2; if(dd<bd){bd=dd;tgt=q;} }
+     for(const o of S.en){ if(o===e||o.hp<=0||o.wild||!hostile(e.team,o.team))continue;
+       const dd=(o.x-e.x)**2+(o.y-e.y)**2; if(dd<bd){bd=dd;tgt=o;} }
+     if(tgt&&e.tpT<=0){ e.tpT=1.4;
+       const ta=Math.atan2(tgt.y-e.y,tgt.x-e.x);
+       ebul(e.x,e.y,ta,70,3,1.5,e.team,HA.summonerDamage||14);
+     }
+     e.tpT-=dt;
+     const gx=e.goalX-e.x, gy=e.goalY-e.y, gd=Math.hypot(gx,gy)||1;
+     if(gd>10){ e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt; }
      break; }
    /* ---- MOBA structures (see moba.js) ----
       All three are team-owned and fire team-tagged bolts, so they can

@@ -86,7 +86,7 @@ function mkStruct(kind,team,x,y){
    generic melee bump without inflating every charging enemy in the game */
 function mobaChargeDmg(kind){
   if(kind==='basebss')return MOBA.baseboss.chargeDamage;
-  if(kind==='siegelord')return MOBA.siegeLord.chargeDamage;
+  if(kind==='siegelord'||kind==='wardsiege')return MOBA.siegeLord.chargeDamage;
   return 0;
 }
 function mobaSpawnStructures(){
@@ -236,19 +236,23 @@ function grantAssistXp(killer,fullXp,victim){
 }
 
 /* ---------------- shard shop ----------------
-   Two capture-style pads sit just off the lane near mid-map, one per side:
-   stand on one with enough shards and it spends them. The mercenary pad
-   buys a pair of buffed charging creeps; the cache pad buys a chest. Both
-   go on cooldown afterwards so they can't be spammed. */
+   Three capture-style pads sit just off the lane near mid-map, one set per
+   side: stand on one with enough shards and it spends them. Mercenary buys
+   a pair of buffed charging creeps; cache buys a chest; weapon roll grants
+   a new weapon (or, once you're at the siege weapon cap, rerolls one of the
+   two you're carrying — see maxSlots() in sim.js). All three go on
+   cooldown afterwards so they can't be spammed. */
+const SHOP_COST={merc:'creepCost',chest:'chestCost',wpn:'wpnCost'};
+const SHOP_COOLDOWN={merc:'creepCooldown',chest:'chestCooldown',wpn:'wpnCooldown'};
 function mobaSpawnShops(){
   const SH=MOBA.shop, cx=WW/2, y0=WH/2;
   S.shops=[];
   for(let team=0;team<2;team++){
     const side=team===0?-1:1;
-    S.shops.push({k:'merc', team, cd:0,
-      x:cx+side*WW*SH.offsetFromCentre, y:y0-WH*SH.laneOffsetY});
-    S.shops.push({k:'chest',team, cd:0,
-      x:cx+side*WW*SH.offsetFromCentre, y:y0+WH*SH.laneOffsetY});
+    const x=cx+side*WW*SH.offsetFromCentre;
+    S.shops.push({k:'merc', team, cd:0, x, y:y0-WH*SH.laneOffsetY});
+    S.shops.push({k:'wpn',  team, cd:0, x, y:y0});
+    S.shops.push({k:'chest',team, cd:0, x, y:y0+WH*SH.laneOffsetY});
   }
 }
 function mobaShopTick(dt){
@@ -259,21 +263,42 @@ function mobaShopTick(dt){
     for(const p of S.players.values()){
       if(p.dead||p.team!==sh.team)continue;
       if(Math.hypot(p.x-sh.x,p.y-sh.y)>SH.radius)continue;
-      const cost=sh.k==='merc'?SH.creepCost:SH.chestCost;
+      const cost=SH[SHOP_COST[sh.k]];
       if(p.shards<cost){
         if(p.id===myId&&!p.shopWarn){ p.shopWarn=1; toast('Need ◆'+cost); sfxE('denied'); }
         continue;
       }
       p.shards-=cost;
-      sh.cd=sh.k==='merc'?SH.creepCooldown:SH.chestCooldown;
+      sh.cd=SH[SHOP_COOLDOWN[sh.k]];
       sfxE('buy');
-      if(sh.k==='merc')mobaBuyMercs(p.team);
-      else S.it.push({k:2,x:sh.x,y:sh.y});
-      toastAll(p.name+(sh.k==='merc'?' hired mercenaries!':' cracked a cache!'));
+      if(sh.k==='merc'){ mobaBuyMercs(p.team); toastAll(p.name+' hired mercenaries!'); }
+      else if(sh.k==='wpn'){ mobaBuyWeaponRoll(p); }
+      else{ S.it.push({k:2,x:sh.x,y:sh.y}); toastAll(p.name+' cracked a cache!'); }
       break;
     }
   }
   for(const p of S.players.values())p.shopWarn=0;
+}
+/* Weapon roll: fills an empty siege slot with a random unowned weapon, or —
+   once at the cap — replaces a random held weapon with a different one at
+   the same level, so the pad stays useful even at max loadout. */
+function mobaBuyWeaponRoll(p){
+  const canNew=p.weapons.length<maxSlots(S.wave);
+  const notOwned=WKEYS.filter(k=>!p.weapons.some(w=>w.id===k));
+  if(canNew&&notOwned.length){
+    const k=notOwned[irnd(0,notOwned.length)];
+    const r=Math.random(); const rar=r<.5?'c':r<.8?'r':r<.95?'e':'l';
+    p.weapons.push({id:k,lvl:1,rar,cd:0});
+    toastAll(p.name+' rolled '+RARS[rar].n+' '+WPN[k].n+'!');
+    return;
+  }
+  if(p.weapons.length&&notOwned.length){
+    const i=irnd(0,p.weapons.length), old=p.weapons[i];
+    const pool=notOwned.filter(k=>k!==old.id);
+    const k=(pool.length?pool:notOwned)[irnd(0,(pool.length?pool:notOwned).length)];
+    p.weapons[i]={id:k,lvl:old.lvl,rar:old.rar,cd:0};
+    toastAll(p.name+' rerolled '+WPN[old.id].n+' → '+WPN[k].n+'!');
+  }
 }
 /* Bought mercenaries: tougher than a line creep, weaker than a siege lord,
    and they only ever charge — straight down the lane at the enemy nexus. */
@@ -295,12 +320,12 @@ function mobaBuyMercs(team){
    true for any mismatched pair, so it fights — and is fought by — everything
    on the map with no special cases.
 
-   It roams the middle of the battleground, away from either base. Leave it
-   alone for long enough and it ROOTS, becoming a HIVE NEXUS: it stops
-   moving, spawns its own creeps in orbit, and effectively turns into a third
-   nexus. Killing it in that state ends the match as a double win over both
-   sides. It also drifts a handful of weak escort spores — see
-   mobaSpawnSwarmling(). */
+   It roams the middle of the battleground, away from either base, growing
+   toward a HIVE NEXUS the whole time (see hiveGrow / mobaWorldBossPoked) —
+   once rooted it stops moving and starts sending assault waves down both
+   lanes (see mobaHiveAssaultTick). Killing it in that state ends the match
+   as a double win over both sides. It also drifts an ever-growing handful of
+   weak escort spores while unrooted — see mobaSpawnSwarmling(). */
 const TEAM_WILD=2;
 /* A random point inside the roam box centred on the map — the mothership's
    whole patrol stays away from both bases by construction. */
@@ -313,7 +338,7 @@ function mobaSpawnWorldBoss(){
   const WB=MOBA.worldBoss;
   const start=mobaWorldBossRoamPoint();
   const boss=mkTeamEnt('warden',TEAM_WILD,start.x,start.y);
-  boss.wbTo=mobaWorldBossRoamPoint(); boss.wbIdle=0; boss.hive=0; boss.wild=1;
+  boss.wbTo=mobaWorldBossRoamPoint(); boss.hiveGrow=0; boss.hive=0; boss.wild=1;
   S.en.push(boss);
   S.worldBoss=boss.id;
   // orbiting shards: the existing multi-part shield logic keys off e.core
@@ -347,40 +372,72 @@ function mobaWorldBossTick(dt){
     mobaWorldBossDefeated();
     return;
   }
-  // untouched for long enough → root into the hive
-  boss.wbIdle=(boss.wbIdle||0)+dt;
-  if(!boss.hive&&boss.wbIdle>=WB.idleToHive){
-    boss.hive=1; boss.spd=0;
-    boss.hp=boss.maxhp=boss.maxhp*1.5;         // rooted, but far harder to remove
-    toastAll('☠ THE INFECTED MOTHERSHIP HAS ROOTED INTO A HIVE NEXUS — destroy it to end this');
-    sfxE('boss',boss.x,boss.y);
-  }
-  if(boss.hive){
-    boss.hiveT=(boss.hiveT||0)-dt;
-    const brood=S.en.filter(e=>e.k==='wardling'&&e.hp>0).length;
-    if(boss.hiveT<=0&&brood<WB.hiveMaxCreeps){
-      boss.hiveT=WB.hiveCreepEvery;
-      const a=rnd(0,TAU), r=WB.hiveOrbitRadius;
-      const c=mkTeamEnt('wardling',TEAM_WILD,boss.x+Math.cos(a)*r,boss.y+Math.sin(a)*r);
-      c.wild=1; c.hiveOf=boss.id; c.ph=a;
-      S.en.push(c);
+  // The hive meter always rises; mobaWorldBossPoked() knocks it back
+  // whenever the core (or a shard) takes damage. At 100 it roots.
+  if(!boss.hive){
+    boss.hiveGrow=Math.min(100,(boss.hiveGrow||0)+100/(WB.hiveGrowTime||50)*dt);
+    if(boss.hiveGrow>=100){
+      boss.hive=1; boss.spd=0; boss.hiveGrow=100;
+      boss.hp=boss.maxhp=boss.maxhp*1.5;         // rooted, but far harder to remove
+      toastAll('☠ THE INFECTED MOTHERSHIP HAS ROOTED INTO A HIVE NEXUS — destroy it to end this');
+      sfxE('boss',boss.x,boss.y);
     }
   }
-  // maintain a small standing escort of weak spores, hive or not
-  boss.swarmT=(boss.swarmT||0)-dt;
-  const swarmAlive=S.en.filter(e=>e.escortOf===boss.id&&e.hp>0).length;
-  if(boss.swarmT<=0&&swarmAlive<(WB.swarmMax||4)){
-    boss.swarmT=WB.swarmEvery||6;
-    mobaSpawnSwarmling(boss);
+  if(boss.hive) mobaHiveAssaultTick(boss,dt);
+  else{
+    // standing escort of weak spores grows without limit the longer it's
+    // left alone — more spores in the way makes it harder to get chip
+    // damage onto the core, which is what feeds the hive meter above
+    boss.swarmT=(boss.swarmT||0)-dt;
+    if(boss.swarmT<=0){
+      boss.swarmT=WB.swarmEvery||10;
+      for(let i=0;i<(WB.swarmBurst||4);i++) mobaSpawnSwarmling(boss);
+    }
   }
 }
-/* Any damage resets the idle timer — that is what "if no one attacks it"
-   means, and it is checked in damageE(). */
-function mobaWorldBossPoked(e){
+/* Once rooted, the hive sends assault waves down BOTH lanes at once — one
+   batch marching toward each team's nexus — on a faster cadence than the
+   normal team creepInterval. Each wave is chase drones + a summoner creep
+   that spawns its own escort as it marches; every siegeCreepEvery-th wave
+   also sends a hive siege creep. */
+function mobaHiveAssaultTick(boss,dt){
+  const HA=MOBA.worldBoss.hiveAssault; if(!HA)return;
+  boss.assaultT=(boss.assaultT||HA.interval)-dt;
+  if(boss.assaultT>0)return;
+  boss.assaultT=HA.interval;
+  boss.assaultWave=(boss.assaultWave||0)+1;
+  for(let side=0;side<2;side++){
+    const goalX=side===0?WW*MOBA.positions.nexus:WW*(1-MOBA.positions.nexus), goalY=WH/2;
+    for(let i=0;i<(HA.chaseDronesPerWave||3);i++){
+      const sp=mkTeamEnt('spore',TEAM_WILD,boss.x+rnd(-20,20),boss.y+rnd(-20,20));
+      sp.wild=1; sp.goalX=goalX; sp.goalY=goalY; sp.ph=rnd(0,TAU);
+      S.en.push(sp);
+    }
+    for(let i=0;i<(HA.summonerPerWave||1);i++){
+      const su=mkTeamEnt('wardsummoner',TEAM_WILD,boss.x+rnd(-20,20),boss.y+rnd(-20,20));
+      su.wild=1; su.goalX=goalX; su.goalY=goalY;
+      S.en.push(su);
+    }
+    if(boss.assaultWave%(HA.siegeCreepEvery||3)===0){
+      const sg=mkTeamEnt('wardsiege',TEAM_WILD,boss.x+rnd(-20,20),boss.y+rnd(-20,20));
+      sg.wild=1; sg.goalX=goalX; sg.goalY=goalY;
+      S.en.push(sg);
+    }
+  }
+  toastAll('☠ the hive sends an assault down both lanes');
+}
+/* Any damage on the core (or a linked shard) knocks the hive meter back,
+   proportional to how much of the core's max HP it represents — so it takes
+   sustained chip damage, not one big hit, to hold it off indefinitely. */
+function mobaWorldBossPoked(e,dmg){
   if(!S.moba||!S.worldBoss)return;
   const boss=S.en.find(b=>b.id===S.worldBoss);
   if(!boss||boss.hive)return;
-  if(e.id===boss.id||e.core===boss.id)boss.wbIdle=0;
+  if(e.id===boss.id||e.core===boss.id){
+    const WB=MOBA.worldBoss;
+    const pct=(dmg||0)/boss.maxhp*100*(WB.hiveGrowDmgMult||1);
+    boss.hiveGrow=Math.max(0,(boss.hiveGrow||0)-pct);
+  }
 }
 function mobaWorldBossDefeated(){
   const WB=MOBA.worldBoss;

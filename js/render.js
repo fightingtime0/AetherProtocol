@@ -114,11 +114,14 @@ function render(){
   if(isHost)for(const f of fxList){ctx.globalAlpha=Math.min(1,f.l*3);ctx.fillStyle=f.ci;
     ctx.fillRect(Math.round(f.x),Math.round(f.y),1,1);}
   ctx.globalAlpha=1;
-  // shard pads (Nexus Siege): mercenary + cache purchase spots
+  // shard pads (Nexus Siege): mercenary + weapon roll + cache purchase spots
+  const SHOP_ICON=['⚔','⚙','▣'], SHOP_LABEL=['HIRE MERCS','ROLL WEAPON','OPEN CACHE'],
+    SHOP_COSTK=['creepCost','wpnCost','chestCost'];
   const shops=isHost?(S.shops||0):(V?V.shp:0);
   if(shops)for(const o of shops){
     const ox=isHost?o.x:o[0], oy=isHost?o.y:o[1];
-    const oteam=isHost?o.team:o[2], merc=isHost?(o.k==='merc'):(o[3]===0);
+    const oteam=isHost?o.team:o[2];
+    const kindCode=isHost?(o.k==='merc'?0:o.k==='wpn'?1:2):o[3];
     const ocd=isHost?o.cd:o[4];
     if(!vis(ox,oy,34))continue;
     const R=MOBA?MOBA.shop.radius:26;
@@ -129,11 +132,11 @@ function render(){
     ctx.textAlign='center';
     ctx.font='bold 8px monospace';
     ctx.fillStyle=teamColor(oteam);
-    ctx.fillText(merc?'⚔':'▣',Math.round(ox),Math.round(oy)-1);
+    ctx.fillText(SHOP_ICON[kindCode],Math.round(ox),Math.round(oy)-1);
     // spell out what the pad does and what it costs
     ctx.font='bold 6px monospace';
-    const label=merc?'HIRE MERCS':'OPEN CACHE';
-    const cost=MOBA?(merc?MOBA.shop.creepCost:MOBA.shop.chestCost):0;
+    const label=SHOP_LABEL[kindCode];
+    const cost=MOBA?MOBA.shop[SHOP_COSTK[kindCode]]:0;
     ctx.fillStyle='#000';
     ctx.fillText(label,Math.round(ox)+1,Math.round(oy)+9);
     ctx.fillStyle=ocd>0?'#8f9ac2':'#e8ecff';
@@ -317,11 +320,24 @@ function render(){
     // Objective structures always show their bar (you need to read a siege at
     // a glance); everything else only shows one once it has been damaged.
     const isObjective=(e.team!==undefined&&e.team>=0);
+    let barY=Math.round(ey-spr.h*scl/2-4);
     if(hpp<1||isObjective){const bw=(ET[ti].boss?26:ET[ti].mini?18:10)*Math.max(1,scl*.8);
-      ctx.fillStyle='#060810';ctx.fillRect(Math.round(ex-bw/2),Math.round(ey-spr.h*scl/2-4),bw,2);
+      ctx.fillStyle='#060810';ctx.fillRect(Math.round(ex-bw/2),barY,bw,2);
       ctx.fillStyle=(e.team!==undefined&&e.team>=0)?teamColor(e.team)
         :ET[ti].boss?'#ff4fd8':ET[ti].opt?'#4ef0e8':'#7cff6b';
-      ctx.fillRect(Math.round(ex-bw/2),Math.round(ey-spr.h*scl/2-4),Math.round(bw*hpp),2);}
+      ctx.fillRect(Math.round(ex-bw/2),barY,Math.round(bw*hpp),2);
+      barY-=4;}
+    // hive growth: how close the mothership is to rooting into a third
+    // nexus — rises with time, knocked back by chip damage. Banded rather
+    // than a smooth gradient so it reads at a glance, pixel-art style.
+    // Stays pinned full once rooted — a full red bar reads fine as "already
+    // a hive", and .hive itself isn't synced to clients.
+    if(ET[ti].id==='warden'){
+      const grow=(e.hiveGrow||0)/100, bw=32*Math.max(1,scl*.8);
+      const gcol=grow>.75?'#ff5c47':grow>.4?'#ffd35c':'#4ef0e8';
+      ctx.fillStyle='#060810';ctx.fillRect(Math.round(ex-bw/2),barY,bw,2);
+      ctx.fillStyle=gcol;ctx.fillRect(Math.round(ex-bw/2),barY,Math.round(bw*grow),2);
+    }
   }
   // servitor drones
   for(const dn of drs){

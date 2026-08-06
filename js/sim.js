@@ -585,7 +585,6 @@ function applyClientHit(p,kind,id){
 function toastAll(m){ toast(m); bcast({t:'ts',m}); }
 function damageE(e,dmg,owner,quiet){
   if(S&&S.moba&&e&&e.wild){          // the mothership: track aggression + last hitter
-    mobaWorldBossPoked(e);
     if(owner!==undefined)S.wbLastHitBy=owner;
     if(e.id===S.worldBoss){ S.wbX=e.x; S.wbY=e.y; S.wbWasHive=e.hive?1:0; }
   }
@@ -599,6 +598,7 @@ function damageE(e,dmg,owner,quiet){
     if(src&&!hostile(src.team,e.team))return;
   }
   if(e.shielded)dmg*=BAL.combat.shieldedDmgFrac; // multi-part boss: core barely scratched while any part still lives
+  if(S&&S.moba&&e&&e.wild)mobaWorldBossPoked(e,dmg); // hive meter knockback — uses the dmg that actually lands
   e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit',e.x,e.y);}
   dmgNumE(e.x,e.y-6,dmg,0,e);   // DoT/quiet hits coalesce onto the target, see dmgNumE()
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
@@ -630,7 +630,11 @@ function damageE(e,dmg,owner,quiet){
 }
 
 /* ---------------- picks ---------------- */
-const maxSlots=w=>{ const sw=BAL.waves.slotWaves; return w>=sw[1]?3:w>=sw[0]?2:1; };
+// Nexus Siege runs its own weapon economy (the shard shop's weapon-roll pad,
+// not level-up picks) so it gets a flat cap instead of the PvE wave-based
+// ramp — see moba.json shop.maxWeapons.
+const maxSlots=w=>{ if(S&&S.moba)return MOBA.shop.maxWeapons||2;
+  const sw=BAL.waves.slotWaves; return w>=sw[1]?3:w>=sw[0]?2:1; };
 function genOpts(p){
   const opts=[];
   const owned=p.weapons;
