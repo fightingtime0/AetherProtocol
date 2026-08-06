@@ -490,9 +490,23 @@ function hurtPlayersAt(x,y,r,dmg,ownerId,dot){
    Declared here (not render.js) since sim.js is what writes it and the
    headless test harness never loads render.js. */
 let floatNums=[];
-function dmgNumE(x,y,v,hurtFlag){
+/* target (optional): continuous/DoT sources (lasers, beams, zones, sustained
+   saber burn) call this every tick — up to 60x/sec — so without coalescing
+   they'd flood the screen with one number per frame. Instead, a hit on the
+   same target within COALESCE_MS of the last one adds onto that number and
+   refreshes its clock, reading as one climbing total instead of a wall of
+   text. A fresh target, or the same one after a gap, starts a new pop. */
+const DMGNUM_COALESCE_MS=220;
+function dmgNumE(x,y,v,hurtFlag,target){
   if(role==='client'||!v)return;
-  floatNums.push({x,y,v:Math.round(v),hurt:hurtFlag?1:0,t:now()});
+  const t=now();
+  if(target&&target._dnPop&&t-target._dnT<DMGNUM_COALESCE_MS){
+    target._dnPop.v+=Math.round(v); target._dnPop.t=t; target._dnT=t;
+    return;
+  }
+  const pop={x,y,v:Math.round(v),hurt:hurtFlag?1:0,t};
+  floatNums.push(pop);
+  if(target){ target._dnPop=pop; target._dnT=t; }
   if(S&&conns.length&&S.dnQ.length<20)
     S.dnQ.push([Math.round(x),Math.round(y),Math.round(v),hurtFlag?1:0]);
 }
@@ -524,7 +538,7 @@ function hurt(p,amt,srcId,dot){
     if(amt<=0)return;
   }
   p.hp-=amt; sfxE('hurt',p.x,p.y);
-  if(!dot)dmgNumE(p.x,p.y-8,amt,1);
+  dmgNumE(p.x,p.y-8,amt,1,p);   // DoT hits coalesce onto the player, see dmgNumE()
   if(!dot||Math.random()<.15)
     for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
   if(p.hp<=0){ p.hp=0; p.dead=true; sfxE('down');
@@ -585,7 +599,8 @@ function damageE(e,dmg,owner,quiet){
     if(src&&!hostile(src.team,e.team))return;
   }
   if(e.shielded)dmg*=BAL.combat.shieldedDmgFrac; // multi-part boss: core barely scratched while any part still lives
-  e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit',e.x,e.y);dmgNumE(e.x,e.y-6,dmg,0);}
+  e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit',e.x,e.y);}
+  dmgNumE(e.x,e.y-6,dmg,0,e);   // DoT/quiet hits coalesce onto the target, see dmgNumE()
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
     S.score+=e.sc; sfxE(e.boss?'bosskill':'kill',e.x,e.y);
     const p=S.players.get(owner);
