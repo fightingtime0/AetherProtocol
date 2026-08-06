@@ -121,7 +121,12 @@ function hidePickUI(){ $('scrPick').classList.add('hidden');
 // ed.frame selects which idle frame is being painted; ed.px holds both.
 const ed={cv:$('edGrid'),cell:24,painting:false,color:'#4ef0e8',showHB:true,px:null,
   frames:null,frame:0};
-const EDCOLORS=['#4ef0e8','#ff4fd8','#ffd35c','#ff5c47','#7a5cff','#e8ecff','#c9cfe8','#6b7396','#2b1f4e','#141a2e','#7cff6b','#ff9d3c','#ffffff','#000000'];
+// Expanded well past the original 14 so a painted sprite can actually read
+// as a distinct character instead of everyone reaching for the same handful
+// of neon primaries — more warm/skin tones, more mid-saturation hues, a
+// couple of pastels, still anchored on the game's own neon-on-navy palette.
+const EDCOLORS=['#4ef0e8','#ff4fd8','#ffd35c','#ff5c47','#7a5cff','#e8ecff','#c9cfe8','#6b7396','#2b1f4e','#141a2e','#7cff6b','#ff9d3c','#ffffff','#000000',
+  '#ff8fa3','#ffb199','#d9a066','#8f5c3a','#4a3a12','#c9524a','#5c1310','#ffe066','#a8ff60','#2fae6b','#0d3b2e','#3ec6ff','#1e5fa8','#b34fff','#e85d9c','#4ef09a','#ffb3de','#8fa3bf'];
 function edInit(){
   renderClassRow();
   ed.frames=[save.sprite.map(r=>r.slice()), (save.sprite2||save.sprite).map(r=>r.slice())];

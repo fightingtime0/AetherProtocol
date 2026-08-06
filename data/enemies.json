@@ -949,6 +949,67 @@
     }
   },
   {
+    "_comment": "SHOP \u2014 Amplifier: ranged support creep bought from the reinforcements pad. Holds a standoff distance (ai wardswarm's cousin, see 'ampcreep' in enemies.js), buffs nearby allies, pulses AoE heals.",
+    "id": "amplifier",
+    "ai": "ampcreep",
+    "scale": 1.2,
+    "hp": 420,
+    "spd": 32,
+    "r": 5,
+    "score": 40,
+    "shards": 4,
+    "sprite": {
+      "pal": {
+        "1": "#1a5c4a",
+        "2": "#4ef0a8",
+        "3": "#e8ecff",
+        "4": "#0d2e26"
+      },
+      "rows": [
+        ".1...1.",
+        "1.2.2.1",
+        ".24242.",
+        "2.343.2",
+        ".24242.",
+        "1.2.2.1",
+        ".1...1."
+      ]
+    }
+  },
+  {
+    "_comment": "SHOP \u2014 Payload: bought from the reinforcements pad. Never stops to skirmish (e.merc) and self-destructs the instant it's close enough to a hostile nexus (selfDestructNearNexus, 'creep' ai). detonateOnDeath (checked in damageE) fires either way it dies.",
+    "id": "payload",
+    "ai": "creep",
+    "detonateOnDeath": true,
+    "selfDestructNearNexus": true,
+    "mini": true,
+    "scale": 1.3,
+    "hp": 620,
+    "spd": 42,
+    "r": 5,
+    "score": 70,
+    "shards": 6,
+    "sprite": {
+      "pal": {
+        "1": "#7a2b0a",
+        "2": "#ff9d3c",
+        "3": "#ffe8a3",
+        "4": "#3d1505"
+      },
+      "rows": [
+        "..212..",
+        ".24242.",
+        "1444441",
+        "2434342",
+        "2444442",
+        "2434342",
+        "1444441",
+        ".24242.",
+        "..212.."
+      ]
+    }
+  },
+  {
     "_comment": "WORLD BOSS core \u2014 neutral third team, hostile to everything. Multi-part with orbiting shards. Flesh-themed: an infected mass that roots into a HIVE NEXUS if left alone.",
     "id": "warden",
     "ai": "warden",

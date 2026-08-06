@@ -455,12 +455,15 @@ function dotReady2(holder,dt){
    moves goes through here — the snapshot, and the host's own myPos — so a
    slow can't be applied in one place and forgotten in another. */
 function effSpeed(p){
+  // Amplifier aura: a transient speed buff while standing near one — see
+  // the 'ampcreep' AI in enemies.js, which is the only thing that sets this.
+  const base=p.ampBuffT>0?p.st.spd*((MOBA&&MOBA.shop.amplifier&&MOBA.shop.amplifier.spdBuff)||1):p.st.spd;
   const Z=BAL.combat.zoneSlow;
-  if(!Z||!(p.slowT>0))return p.st.spd;
+  if(!Z||!(p.slowT>0))return base;
   // wells STACK: each overlapping field multiplies the drag, down to a floor
   // so a pile of them can never fully root you
   const stk=Math.max(1,p.slowStk||1);
-  return p.st.spd*Math.max(Z.minMult,Math.pow(Z.mult,stk));
+  return base*Math.max(Z.minMult,Math.pow(Z.mult,stk));
 }
 const NO_FOES=[];
 function foePlayers(src){
@@ -602,6 +605,17 @@ function damageE(e,dmg,owner,quiet){
   e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit',e.x,e.y);}
   dmgNumE(e.x,e.y-6,dmg,0,e);   // DoT/quiet hits coalesce onto the target, see dmgNumE()
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
+    // Payload: detonates on death however it happens — killed by defenders,
+    // or self-destructed on reaching the nexus (see the 'creep' AI). One big
+    // radial burst plus a lingering zone that deals a % of whatever's
+    // standing in it, so the same numbers threaten a 300-HP creep and a
+    // 42000-HP nexus alike.
+    if(ET[ETI[e.k]].detonateOnDeath){
+      const PL=(MOBA&&MOBA.shop&&MOBA.shop.payload)||{};
+      boom(e.x,e.y,PL.boomRadius||70,PL.boomDmg||400,undefined,'#7cff6b');
+      S.zn.push({x:e.x,y:e.y,r:PL.zoneRadius||90,dps:0,start:0,pctDps:PL.zonePctDps||0.03,
+        dur:PL.zoneDur||6,ttl:PL.zoneDur||6,owner:undefined,col:'#7cff6b'});
+    }
     S.score+=e.sc; sfxE(e.boss?'bosskill':'kill',e.x,e.y);
     const p=S.players.get(owner);
     if(S.moba&&p){ const xp=mobaXpForEntity(e);
@@ -710,18 +724,31 @@ function discardWeapon(p,i){ // full discard, upgrades lost; only during pick wi
   startPick(p,true);
 }
 function openChest(p){
+  // Three possible payouts — a new weapon, a weapon upgrade, or a stat
+  // passive — each picked with even odds among whichever are actually
+  // available, so a chest is never "just" a weapon machine.
   const canNew=p.weapons.length<maxSlots(S.wave);
-  if(canNew){
-    const notOwned=WKEYS.filter(k=>!p.weapons.some(w=>w.id===k));
-    if(notOwned.length){const k=notOwned[irnd(0,notOwned.length)];
+  const notOwned=canNew?WKEYS.filter(k=>!p.weapons.some(w=>w.id===k)):[];
+  const upgradable=p.weapons.filter(w=>w.lvl<RARS[w.rar].max);
+  const options=[];
+  if(notOwned.length)options.push('new');
+  if(upgradable.length)options.push('up');
+  options.push('stat');
+  switch(options[irnd(0,options.length)]){
+    case 'new':{const k=notOwned[irnd(0,notOwned.length)];
       const r=Math.random();const rar=r<.35?'r':r<.75?'e':'l';
       p.weapons.push({id:k,lvl:1,rar,cd:0});
       toastAll(p.name+' found '+RARS[rar].n+' '+WPN[k].n+'!'); return;}
+    case 'up':{const w=upgradable[irnd(0,upgradable.length)]; w.lvl++;
+      toastAll(p.name+': '+WPN[w.id].n+' → Lv'+w.lvl); return;}
+    default:{
+      const pool=PASSIVES.filter(ps=>!ps.mp||S.players.size>1);
+      if(pool.length){ const ps=pool[irnd(0,pool.length)]; ps.f(p);
+        if(ps.heal)p.hp=Math.min(p.maxhp,p.hp+ps.heal);
+        toastAll(p.name+' gained '+ps.n+'!'); return; }
+      p.shards+=50; toastAll(p.name+' +50 ◆');
+    }
   }
-  const up=p.weapons.filter(w=>w.lvl<RARS[w.rar].max);
-  if(up.length){const w=up[irnd(0,up.length)];w.lvl++;
-    toastAll(p.name+': '+WPN[w.id].n+' → Lv'+w.lvl); return;}
-  p.shards+=50; toastAll(p.name+' +50 ◆');
 }
 
 /* ---------------- host tick ---------------- */
@@ -750,6 +777,7 @@ function hostUpdate(dt){
     p.inv=Math.max(0,p.inv-dt);
     p.surgeT=Math.max(0,p.surgeT-dt);
     p.slowT=Math.max(0,(p.slowT||0)-dt);   // gravity-well drag decays
+    p.ampBuffT=Math.max(0,(p.ampBuffT||0)-dt); // amplifier aura decays if you step out
     // co-op support auras from nearby allies
     let aR=0,aD=0;
     for(const q of S.players.values()){ if(q===p||q.dead)continue;
@@ -847,7 +875,10 @@ function hostUpdate(dt){
             const d=(q.x-p.x)**2+(q.y-p.y)**2;
             if(d<bd&&d<320*320){bd=d;tg=q;}}
           if(!tg)continue;}
-        w.cd=def.cd(w)*p.st.cdM;
+        // amplifier aura: transient fire-rate buff, same shape as the speed
+        // buff in effSpeed() — lower cdM is faster
+        const ampCdM=p.ampBuffT>0?((MOBA&&MOBA.shop.amplifier&&MOBA.shop.amplifier.atkSpdBuff)||1):1;
+        w.cd=def.cd(w)*p.st.cdM*ampCdM;
         if(def.rt==='t'){
           p.t-=def.cost*p.st.costM;
           if(p.t<=0){p.t=0;p.tLock=true;}
@@ -1131,11 +1162,15 @@ function hostUpdate(dt){
     }
     const span=dotReady(z,dt);
     if(span){
+      // pctDps zones (Payload's lingering hazard) scale to EACH target's own
+      // max HP instead of a flat dps, so the same zone threatens a 300-HP
+      // creep and a 42000-HP nexus alike. They're a structure/creep hazard
+      // only — players just walk out of the puddle.
       for(const e of S.en) if(e.hp>0&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)
-        damageE(e,z.cur*span,z.owner,true);
-      hurtPlayersAt(z.x,z.y,z.r,z.cur*span,z.owner,true); // PvP: sigils burn players standing in them
+        damageE(e,z.pctDps?e.maxhp*z.pctDps*span:z.cur*span,z.owner,true);
+      if(!z.pctDps) hurtPlayersAt(z.x,z.y,z.r,z.cur*span,z.owner,true); // PvP: sigils burn players standing in them
     }
-    if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:'#b34fff'});
+    if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:z.col||'#b34fff'});
   }
   S.zn=S.zn.filter(z=>z.ttl>0);
   // Smite Pulse rings: expand outward from where they were cast, tag anything

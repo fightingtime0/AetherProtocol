@@ -10,9 +10,32 @@ addEventListener('resize',fit); fit();
 
 const PB_COLS=['#ffd35c','#4ef0e8','#ff4fd8','#b3a6ff','#7cff6b','#ffffff'];
 const EBCOLS=['#ffd35c','#4ef0e8','#ff4fd8','#b3a6ff','#7cff6b'];
+/* The local player's OWN sprite used to be drawn straight from myPos, which
+   moves in discrete per-frame steps — fine for gameplay, but it reads as a
+   jittery stair-step at the pixel-art scale this renders at, and makes a
+   painted character hard to actually look at while moving. smoothPos eases
+   toward myPos purely for drawing; camera placement, aiming and everything
+   gameplay-relevant still reads myPos directly, so nothing here can affect
+   collision or network-reported position. */
+let smoothPos=null;
 // floatNums (floating combat text) is declared in sim.js, next to dmgNumE() —
 // it's filled from there and from applySnap() (net.js), read only here.
 
+/* Every text label drawn ON the map (name tags, shop signage, damage
+   numbers, fuse counters) used to be a single 1px black offset behind the
+   colored text — barely readable against a busy background. A full
+   8-direction outline reads clearly at any of these tiny pixel-font sizes
+   instead. Assumes ctx.font/ctx.textAlign are already set by the caller. */
+function drawLabel(x,y,txt,color){
+  const ox=Math.round(x),oy=Math.round(y);
+  ctx.fillStyle='#000';
+  ctx.fillText(txt,ox-1,oy);ctx.fillText(txt,ox+1,oy);
+  ctx.fillText(txt,ox,oy-1);ctx.fillText(txt,ox,oy+1);
+  ctx.fillText(txt,ox-1,oy-1);ctx.fillText(txt,ox+1,oy-1);
+  ctx.fillText(txt,ox-1,oy+1);ctx.fillText(txt,ox+1,oy+1);
+  ctx.fillStyle=color;
+  ctx.fillText(txt,ox,oy);
+}
 function drawImgC(img,x,y,flashAmt,scl=1){
   const w=img.width*scl,h=img.height*scl;
   ctx.imageSmoothingEnabled=false;
@@ -114,35 +137,33 @@ function render(){
   if(isHost)for(const f of fxList){ctx.globalAlpha=Math.min(1,f.l*3);ctx.fillStyle=f.ci;
     ctx.fillRect(Math.round(f.x),Math.round(f.y),1,1);}
   ctx.globalAlpha=1;
-  // shard pads (Nexus Siege): mercenary + weapon roll + cache purchase spots
-  const SHOP_ICON=['⚔','⚙','▣'], SHOP_LABEL=['HIRE MERCS','ROLL WEAPON','OPEN CACHE'],
-    SHOP_COSTK=['creepCost','wpnCost','chestCost'];
+  // shard pads (Nexus Siege): reinforcements/amplifier/payload + weapon roll
+  // + cache. kindCode order matches SHOP_KINDS (moba.js) exactly.
+  const SHOP_ICON=['⚔','✚','☢','⚙','▣'],
+    SHOP_LABEL=['REINFORCE','AMPLIFY','PAYLOAD','ROLL WEAPON','OPEN CACHE'],
+    SHOP_COSTK=['creepCost','ampCost','payloadCost','wpnCost','chestCost'];
   const shops=isHost?(S.shops||0):(V?V.shp:0);
   if(shops)for(const o of shops){
     const ox=isHost?o.x:o[0], oy=isHost?o.y:o[1];
     const oteam=isHost?o.team:o[2];
-    const kindCode=isHost?(o.k==='merc'?0:o.k==='wpn'?1:2):o[3];
+    const kindCode=isHost?SHOP_KINDS.indexOf(o.k):o[3];
     const ocd=isHost?o.cd:o[4];
     if(!vis(ox,oy,34))continue;
-    const R=MOBA?MOBA.shop.radius:26;
+    const small=kindCode<=2; // reinf/amp/payload cluster tighter near each other
+    const R=MOBA?(small?MOBA.shop.reinfRadius:MOBA.shop.radius):(small?15:22);
     ctx.globalAlpha=ocd>0?.15:.32;
     ctx.strokeStyle=teamColor(oteam); ctx.lineWidth=1;
     ctx.beginPath();ctx.arc(ox,oy,R,0,TAU);ctx.stroke();
-    ctx.globalAlpha=ocd>0?.25:.85;
+    ctx.globalAlpha=ocd>0?.35:1;
     ctx.textAlign='center';
-    ctx.font='bold 8px monospace';
-    ctx.fillStyle=teamColor(oteam);
-    ctx.fillText(SHOP_ICON[kindCode],Math.round(ox),Math.round(oy)-1);
+    ctx.font='bold 9px monospace';
+    drawLabel(ox,oy-1,SHOP_ICON[kindCode],teamColor(oteam));
     // spell out what the pad does and what it costs
-    ctx.font='bold 6px monospace';
+    ctx.font='bold 7px monospace';
     const label=SHOP_LABEL[kindCode];
     const cost=MOBA?MOBA.shop[SHOP_COSTK[kindCode]]:0;
-    ctx.fillStyle='#000';
-    ctx.fillText(label,Math.round(ox)+1,Math.round(oy)+9);
-    ctx.fillStyle=ocd>0?'#8f9ac2':'#e8ecff';
-    ctx.fillText(label,Math.round(ox),Math.round(oy)+8);
-    ctx.fillStyle=ocd>0?'#8f9ac2':'#ffd35c';
-    ctx.fillText(ocd>0?('READY IN '+Math.ceil(ocd)+'s'):('◆ '+cost),Math.round(ox),Math.round(oy)+15);
+    drawLabel(ox,oy+R-2,label,ocd>0?'#8f9ac2':'#e8ecff');
+    drawLabel(ox,oy+R+6,ocd>0?('READY IN '+Math.ceil(ocd)+'s'):('◆ '+cost),ocd>0?'#8f9ac2':'#ffd35c');
     ctx.globalAlpha=1;
   }
   /* Velocity-aligned streak behind fast rounds. Derived from speed rather
@@ -288,7 +309,10 @@ function render(){
     const scl=(isHost?(e.scl||1):(e.scl||1));
     if(!vis(ex,ey,16*scl+8))continue;
     const ti=isHost?ETI[e.k]:e.ti;
-    const spr=SPRC[ET[ti].spr||ET[ti].id];
+    const sprKey=ET[ti].spr||ET[ti].id;
+    // azure/crimson recolor for team-owned entities — see bakeSprite() in data.js
+    const spr=(e.team===0&&SPRC[sprKey+'_t0'])?SPRC[sprKey+'_t0']
+      :(e.team===1&&SPRC[sprKey+'_t1'])?SPRC[sprKey+'_t1']:SPRC[sprKey];
     const telegraphing=isHost?(e.st===1):e.tel;
     if(telegraphing){ctx.globalAlpha=.35;ctx.fillStyle='#ff5c47';
       ctx.beginPath();ctx.arc(ex,ey,10*scl,0,TAU);ctx.fill();ctx.globalAlpha=1;}
@@ -351,7 +375,8 @@ function render(){
     if(stuck){ ctx.globalAlpha=.5;
       ctx.strokeStyle='#ff5c47'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(dxx,dyy,6,0,TAU);ctx.stroke(); }
-    drawImgC(SPRC.drone.c,dxx,dyy,0);
+    const dspr=(dtm===0&&SPRC.drone_t0)?SPRC.drone_t0:(dtm===1&&SPRC.drone_t1)?SPRC.drone_t1:SPRC.drone;
+    drawImgC(dspr.c,dxx,dyy,0);
     // servitors wear their owner's colours too, so you can tell whose swarm
     // is whose in a scrap
     if(dtm!==undefined&&dtm>=0){
@@ -360,17 +385,23 @@ function render(){
     }
     ctx.globalAlpha=1;
     if(stuck&&fuse>0){
-      ctx.font='bold 8px monospace'; ctx.textAlign='center';
-      ctx.fillStyle='#000'; ctx.fillText(fuse,Math.round(dxx)+1,Math.round(dyy)-6);
-      ctx.fillStyle='#ff5c47'; ctx.fillText(fuse,Math.round(dxx),Math.round(dyy)-7);
+      ctx.font='bold 9px monospace'; ctx.textAlign='center';
+      drawLabel(dxx,dyy-7,fuse,'#ff5c47');
     }
     ctx.fillStyle='#060810';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),8,1);
     ctx.fillStyle='#4ef0e8';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),Math.round(8*clamp(hpp,0,1)),1);
   }
   // players
+  if(!smoothPos)smoothPos={x:myPos.x,y:myPos.y};
+  else{
+    smoothPos.x+=(myPos.x-smoothPos.x)*0.4;
+    smoothPos.y+=(myPos.y-smoothPos.y)*0.4;
+    // a big jump (respawn, teleport) snaps instead of gliding across the map
+    if(Math.hypot(myPos.x-smoothPos.x,myPos.y-smoothPos.y)>80){smoothPos.x=myPos.x;smoothPos.y=myPos.y;}
+  }
   for(const p of players){
-    const px=p.id===myId?myPos.x:(isHost?p.x:p.dx);
-    const py=p.id===myId?myPos.y:(isHost?p.y:p.dy);
+    const px=p.id===myId?smoothPos.x:(isHost?p.x:p.dx);
+    const py=p.id===myId?smoothPos.y:(isHost?p.y:p.dy);
     if(p.dead){ctx.globalAlpha=.3;}
     const invF=(p.id===myId)?(myPos.inv>0):(isHost?p.inv>0:!!p.inv);
     const blink=invF&&Math.floor(now()/60)%2===0;
@@ -451,11 +482,9 @@ function render(){
     if(p.id!==myId&&!p.dead){
       let nm=isHost?p.name:(clientRoster.get(p.id)||{}).name||'ALLY';
       if(p.lvl)nm+=' [ '+p.lvl+' ]'; // siege level tag: "voramus [ 2 ]"
-      ctx.font='bold 7px monospace';ctx.textAlign='center';
-      ctx.fillStyle='#000';ctx.fillText(nm,Math.round(px)+1,Math.round(py-8)+1);
+      ctx.font='bold 8px monospace';ctx.textAlign='center';
       // enemies read in their team colour so you can pick targets at a glance
-      ctx.fillStyle=(p.team!==undefined&&p.team>=0)?teamColor(p.team):'#e8ecff';
-      ctx.fillText(nm,Math.round(px),Math.round(py-8));
+      drawLabel(px,py-8,nm,(p.team!==undefined&&p.team>=0)?teamColor(p.team):'#e8ecff');
     }
     ctx.globalAlpha=1;
   }
@@ -464,13 +493,11 @@ function render(){
     ctx.fillRect(Math.round(myPos.x-1),Math.round(myPos.y+8),3,1);}
   // floating damage numbers — drift up and fade, same list host or client
   floatNums=floatNums.filter(n=>now()-n.t<750);
-  ctx.textAlign='center'; ctx.font='bold 8px monospace';
+  ctx.textAlign='center'; ctx.font='bold 9px monospace';
   for(const n of floatNums){
     const age=(now()-n.t)/750, fy2=n.y-age*14;
     ctx.globalAlpha=1-age;
-    ctx.fillStyle='#000'; ctx.fillText(n.v,Math.round(n.x)+1,Math.round(fy2)+1);
-    ctx.fillStyle=n.hurt?'#ff5c47':'#ffe8a3';
-    ctx.fillText(n.v,Math.round(n.x),Math.round(fy2));
+    drawLabel(n.x,fy2,n.v,n.hurt?'#ff5c47':'#ffe8a3');
   }
   ctx.globalAlpha=1;
   ctx.restore();

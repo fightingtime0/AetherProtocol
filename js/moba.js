@@ -54,13 +54,17 @@ function genMobaWorld(){
   WW=MOBA.world.w; WH=MOBA.world.h;
   const obs=[];
   const laneY=WH/2, half=MOBA.laneHalfHeight;
+  const cx=WW/2, cy=WH/2, clearR=(MOBA.worldBoss&&MOBA.worldBoss.hiveClearRadius)||140;
   // Cover hugs the lane edges: dense enough to fight around, but the
   // corridor itself and both bases stay clear so structures keep line of
-  // sight and a push reads cleanly.
+  // sight and a push reads cleanly. The dead-centre is ALSO kept clear —
+  // that's exactly where the mothership roots once it hits 100% hive
+  // growth, and it needs to land as an unobstructed centrepiece.
   for(let i=0;i<MOBA.obstacles;i++){
     for(let tries=0;tries<14;tries++){
       const x=rnd(WW*0.15,WW*0.85), y=rnd(14,WH-14);
       if(Math.abs(y-laneY)<half*0.45)continue; // keep the lane itself walkable
+      if(Math.hypot(x-cx,y-cy)<clearR)continue; // keep the hive's landing spot clear
       const r=rnd(MOBA.obstacleRadius[0],MOBA.obstacleRadius[1]);
       if(obs.some(o=>Math.hypot(o.x-x,o.y-y)<o.r+r+6))continue; // no fused blobs
       obs.push({x,y,r}); break;
@@ -236,23 +240,32 @@ function grantAssistXp(killer,fullXp,victim){
 }
 
 /* ---------------- shard shop ----------------
-   Three capture-style pads sit just off the lane near mid-map, one set per
-   side: stand on one with enough shards and it spends them. Mercenary buys
-   a pair of buffed charging creeps; cache buys a chest; weapon roll grants
-   a new weapon (or, once you're at the siege weapon cap, rerolls one of the
-   two you're carrying — see maxSlots() in sim.js). All three go on
-   cooldown afterwards so they can't be spammed. */
-const SHOP_COST={merc:'creepCost',chest:'chestCost',wpn:'wpnCost'};
-const SHOP_COOLDOWN={merc:'creepCooldown',chest:'chestCooldown',wpn:'wpnCooldown'};
+   Five capture-style pads sit at each team's OWN nexus: stand on one with
+   enough shards and it spends them.
+     UP (a cluster of three) — reinforcements: Reinforcements (buffed
+       charging creeps), Amplifier (backline support: aura buffs + heal
+       pulses), Payload (charges the enemy nexus, detonates on death).
+     DOWN — weapon roll: a new weapon, or once you're at the siege weapon
+       cap, rerolls one of the two you're carrying (see maxSlots() in sim.js).
+     BEHIND (toward your own spawn) — cache: a chest with weapon or stat loot.
+   All five go on cooldown afterwards so they can't be spammed. */
+// single source of truth for the shop's network kind-code (net.js snap()
+// encodes a shop pad's .k as this array's index; render.js decodes it back)
+const SHOP_KINDS=['reinf','amp','payload','wpn','chest'];
+const SHOP_COST={reinf:'creepCost',amp:'ampCost',payload:'payloadCost',wpn:'wpnCost',chest:'chestCost'};
+const SHOP_COOLDOWN={reinf:'creepCooldown',amp:'ampCooldown',payload:'payloadCooldown',wpn:'wpnCooldown',chest:'chestCooldown'};
 function mobaSpawnShops(){
-  const SH=MOBA.shop, cx=WW/2, y0=WH/2;
+  const SH=MOBA.shop, P=MOBA.positions, laneY=WH/2;
   S.shops=[];
   for(let team=0;team<2;team++){
-    const side=team===0?-1:1;
-    const x=cx+side*WW*SH.offsetFromCentre;
-    S.shops.push({k:'merc', team, cd:0, x, y:y0-WH*SH.laneOffsetY});
-    S.shops.push({k:'wpn',  team, cd:0, x, y:y0});
-    S.shops.push({k:'chest',team, cd:0, x, y:y0+WH*SH.laneOffsetY});
+    const nx=team===0?WW*P.nexus:WW*(1-P.nexus);
+    const behindDir=team===0?-1:1;
+    const sp=SH.reinfSpacing||26, upY=laneY-(SH.padOffsetY||60), downY=laneY+(SH.padOffsetY||60);
+    S.shops.push({k:'reinf',  team, cd:0, x:nx-sp, y:upY});
+    S.shops.push({k:'amp',    team, cd:0, x:nx,    y:upY});
+    S.shops.push({k:'payload',team, cd:0, x:nx+sp, y:upY});
+    S.shops.push({k:'wpn',    team, cd:0, x:nx,    y:downY});
+    S.shops.push({k:'chest',  team, cd:0, x:nx+behindDir*(SH.padOffsetX||70), y:laneY});
   }
 }
 function mobaShopTick(dt){
@@ -260,9 +273,10 @@ function mobaShopTick(dt){
   for(const sh of S.shops){
     sh.cd=Math.max(0,sh.cd-dt);
     if(sh.cd>0)continue;
+    const R=sh.k==='reinf'||sh.k==='amp'||sh.k==='payload'?(SH.reinfRadius||15):(SH.radius||22);
     for(const p of S.players.values()){
       if(p.dead||p.team!==sh.team)continue;
-      if(Math.hypot(p.x-sh.x,p.y-sh.y)>SH.radius)continue;
+      if(Math.hypot(p.x-sh.x,p.y-sh.y)>R)continue;
       const cost=SH[SHOP_COST[sh.k]];
       if(p.shards<cost){
         if(p.id===myId&&!p.shopWarn){ p.shopWarn=1; toast('Need ◆'+cost); sfxE('denied'); }
@@ -271,7 +285,9 @@ function mobaShopTick(dt){
       p.shards-=cost;
       sh.cd=SH[SHOP_COOLDOWN[sh.k]];
       sfxE('buy');
-      if(sh.k==='merc'){ mobaBuyMercs(p.team); toastAll(p.name+' hired mercenaries!'); }
+      if(sh.k==='reinf'){ mobaBuyMercs(p.team); toastAll(p.name+' called in reinforcements!'); }
+      else if(sh.k==='amp'){ mobaBuyAmplifier(p.team); toastAll(p.name+' deployed an amplifier!'); }
+      else if(sh.k==='payload'){ mobaBuyPayload(p.team); toastAll(p.name+' launched a payload!'); }
       else if(sh.k==='wpn'){ mobaBuyWeaponRoll(p); }
       else{ S.it.push({k:2,x:sh.x,y:sh.y}); toastAll(p.name+' cracked a cache!'); }
       break;
@@ -280,24 +296,34 @@ function mobaShopTick(dt){
   for(const p of S.players.values())p.shopWarn=0;
 }
 /* Weapon roll: fills an empty siege slot with a random unowned weapon, or —
-   once at the cap — replaces a random held weapon with a different one at
-   the same level, so the pad stays useful even at max loadout. */
+   once at the cap — replaces a random held weapon with a different one.
+   Rarity first, then a level anywhere from 1 up to THAT rarity's own max —
+   right-skewed (Math.random()**1.6) so a fresh Lv-max legendary is a real
+   possibility, not the expected outcome, but "it can hit max" like a good
+   roll should. */
+function mobaRollRarityLevel(){
+  const r=Math.random(); const rar=r<.5?'c':r<.8?'r':r<.95?'e':'l';
+  const maxLvl=RARS[rar].max;
+  const lvl=clamp(Math.ceil(Math.pow(Math.random(),1.6)*maxLvl),1,maxLvl);
+  return {rar,lvl};
+}
 function mobaBuyWeaponRoll(p){
   const canNew=p.weapons.length<maxSlots(S.wave);
   const notOwned=WKEYS.filter(k=>!p.weapons.some(w=>w.id===k));
   if(canNew&&notOwned.length){
     const k=notOwned[irnd(0,notOwned.length)];
-    const r=Math.random(); const rar=r<.5?'c':r<.8?'r':r<.95?'e':'l';
-    p.weapons.push({id:k,lvl:1,rar,cd:0});
-    toastAll(p.name+' rolled '+RARS[rar].n+' '+WPN[k].n+'!');
+    const {rar,lvl}=mobaRollRarityLevel();
+    p.weapons.push({id:k,lvl,rar,cd:0});
+    toastAll(p.name+' rolled '+RARS[rar].n+' '+WPN[k].n+' Lv'+lvl+'!');
     return;
   }
   if(p.weapons.length&&notOwned.length){
     const i=irnd(0,p.weapons.length), old=p.weapons[i];
     const pool=notOwned.filter(k=>k!==old.id);
     const k=(pool.length?pool:notOwned)[irnd(0,(pool.length?pool:notOwned).length)];
-    p.weapons[i]={id:k,lvl:old.lvl,rar:old.rar,cd:0};
-    toastAll(p.name+' rerolled '+WPN[old.id].n+' → '+WPN[k].n+'!');
+    const {rar,lvl}=mobaRollRarityLevel();
+    p.weapons[i]={id:k,lvl,rar,cd:0};
+    toastAll(p.name+' rerolled '+WPN[old.id].n+' → '+RARS[rar].n+' '+WPN[k].n+' Lv'+lvl+'!');
   }
 }
 /* Bought mercenaries: tougher than a line creep, weaker than a siege lord,
@@ -313,6 +339,29 @@ function mobaBuyMercs(team){
     e.spd*=1.25;
     S.en.push(e);
   }
+}
+/* Amplifier: a ranged support creep. It holds a standoff distance rather
+   than charging in (see the 'ampcreep' AI in enemies.js), buffs nearby
+   allies' move speed + fire rate, and pulses an AoE heal. */
+function mobaBuyAmplifier(team){
+  const sp=mobaSpawn(team);
+  const goalX=team===0?WW*(1-MOBA.positions.nexus):WW*MOBA.positions.nexus;
+  const e=mkTeamEnt('amplifier',team,sp.x+rnd(-20,20),sp.y+rnd(-20,20));
+  e.goalX=goalX; e.goalY=WH/2;
+  S.en.push(e);
+}
+/* Payload: charges straight for the enemy nexus like a reinforcement (never
+   stops to skirmish), but self-destructs the instant it gets close enough
+   to a hostile nexus (selfDestructNearNexus, see the 'creep' AI) — and
+   EITHER way it dies, detonateOnDeath (see damageE() in sim.js) fires a big
+   radial burst plus a lingering % -damage zone. */
+function mobaBuyPayload(team){
+  const sp=mobaSpawn(team);
+  const goalX=team===0?WW*(1-MOBA.positions.nexus):WW*MOBA.positions.nexus;
+  const e=mkTeamEnt('payload',team,sp.x+rnd(-20,20),sp.y+rnd(-30,30));
+  e.goalX=goalX; e.goalY=WH/2;
+  e.merc=1;
+  S.en.push(e);
 }
 
 /* ---------------- INFECTED MOTHERSHIP (neutral world boss) ----------------
@@ -379,6 +428,9 @@ function mobaWorldBossTick(dt){
     if(boss.hiveGrow>=100){
       boss.hive=1; boss.spd=0; boss.hiveGrow=100;
       boss.hp=boss.maxhp=boss.maxhp*1.5;         // rooted, but far harder to remove
+      // it becomes the map's centrepiece — dead centre, where genMobaWorld()
+      // already kept a hiveClearRadius of obstacles clear for exactly this
+      boss.x=WW/2; boss.y=WH/2;
       toastAll('☠ THE INFECTED MOTHERSHIP HAS ROOTED INTO A HIVE NEXUS — destroy it to end this');
       sfxE('boss',boss.x,boss.y);
     }

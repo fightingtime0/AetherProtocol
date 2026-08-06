@@ -252,6 +252,17 @@ function enemyAct(e,dt){
      if(e.cd<=0){ e.cd=1.8; ebul(e.x,e.y,aim,62,2); }
      break;
    case 'creep':{ const C=MOBA.creep;
+     // Payload: detonates the instant it's within reach of a hostile nexus,
+     // dealing its death-burst there instead of just standing on it doing
+     // nothing (it never stops to attack — e.merc skips targeting entirely).
+     // damageE() does the actual explosion once hp reaches 0 — see
+     // detonateOnDeath there.
+     if(ET[ETI[e.k]].selfDestructNearNexus&&e.hp>0){
+       const PL=MOBA.shop&&MOBA.shop.payload||{};
+       for(const o of S.en){ if(o.k!=='nexus'||o.hp<=0||!hostile(e.team,o.team))continue;
+         if(Math.hypot(o.x-e.x,o.y-e.y)<(PL.detonateRadius||40)){ damageE(e,e.hp,undefined); break; } }
+       if(e.hp<=0)break;
+     }
      // Sweeps the area around it rather than only reacting at weapon range:
      // anything hostile inside chaseRadius gets pursued, and once locked on
      // it keeps chasing out to dropRadius (hysteresis) so a player sitting
@@ -272,6 +283,41 @@ function enemyAct(e,dt){
      }else{
        const gx=e.goalX-e.x, gy=e.goalY-e.y, gd=Math.hypot(gx,gy)||1;
        e.x+=gx/gd*e.spd*sm*dt; e.y+=gy/gd*e.spd*sm*dt;
+     }
+     break; }
+   case 'ampcreep':{ // Amplifier: hangs at a standoff distance rather than
+                      // charging in, buffs nearby allies, pulses AoE heals
+     const AMP=(MOBA.shop&&MOBA.shop.amplifier)||{};
+     // nearestFoe() has no max range — bounded here so it only reacts to a
+     // fight that's actually nearby, and otherwise just drifts up with the
+     // push (below) instead of beelining across the whole map like a creep
+     let tg=null,bd=(AMP.detectRadius||260)**2;
+     for(const q of S.players.values()){ if(q.dead||!hostile(e.team,q.team))continue;
+       const dd=(q.x-e.x)**2+(q.y-e.y)**2; if(dd<bd){bd=dd;tg=q;} }
+     for(const o of S.en){ if(o===e||o.hp<=0||!hostile(e.team,o.team))continue;
+       const dd=(o.x-e.x)**2+(o.y-e.y)**2; if(dd<bd){bd=dd;tg=o;} }
+     if(tg){
+       const ta=Math.atan2(tg.y-e.y,tg.x-e.x), td=Math.hypot(tg.x-e.x,tg.y-e.y), want=AMP.standoff||180;
+       if(td>want+20){ e.x+=Math.cos(ta)*e.spd*sm*dt; e.y+=Math.sin(ta)*e.spd*sm*dt; }
+       else if(td<want-20){ e.x-=Math.cos(ta)*e.spd*sm*.6*dt; e.y-=Math.sin(ta)*e.spd*sm*.6*dt; }
+     }else{ // nothing found yet — drift up with the push, slower than the front line
+       const gx=e.goalX-e.x, gy=e.goalY-e.y, gd=Math.hypot(gx,gy)||1;
+       if(gd>10){ e.x+=gx/gd*e.spd*sm*.7*dt; e.y+=gy/gd*e.spd*sm*.7*dt; }
+     }
+     const R=AMP.auraRadius||140;
+     for(const q of S.players.values()){ if(q.dead||q.team!==e.team)continue;
+       if(Math.hypot(q.x-e.x,q.y-e.y)<R) q.ampBuffT=AMP.buffDuration||0.6; }
+     e.healT=(e.healT===undefined?(AMP.healInterval||3):e.healT)-dt;
+     if(e.healT<=0){
+       e.healT=AMP.healInterval||3;
+       const pct=AMP.healPct||0.05;
+       for(const q of S.players.values()){ if(q.dead||q.team!==e.team)continue;
+         if(Math.hypot(q.x-e.x,q.y-e.y)<R) q.hp=Math.min(q.maxhp,q.hp+q.maxhp*pct); }
+       for(const o of S.en){ if(o===e||o.hp<=0||o.team!==e.team)continue;
+         if(Math.hypot(o.x-e.x,o.y-e.y)<R) o.hp=Math.min(o.maxhp,o.hp+o.maxhp*pct); }
+       for(let i=0;i<16;i++){ const a2=i/16*TAU;
+         S.fx.push({x:e.x+Math.cos(a2)*10,y:e.y+Math.sin(a2)*10,vx:Math.cos(a2)*50,vy:Math.sin(a2)*50,l:.4,ci:'#7cff6b'}); }
+       sfxE('objwin',e.x,e.y);
      }
      break; }
    case 'siegelord':{ const L=MOBA.siegeLord;

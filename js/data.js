@@ -111,13 +111,61 @@ function wpnDesc(def,lvl){
 }
 
 /* ---------------- sprite baking ---------------- */
+/* Small HSL round-trip so team recoloring can shift HUE while leaving
+   saturation/lightness alone — that's what keeps a recolored sprite reading
+   as "the same shape, different team" instead of a flat color swap. */
+function hexToHsl(hex){
+  const r=parseInt(hex.slice(1,3),16)/255, g=parseInt(hex.slice(3,5),16)/255, b=parseInt(hex.slice(5,7),16)/255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b);
+  let h=0,s=0; const l=(max+min)/2;
+  if(max!==min){
+    const d=max-min;
+    s=l>0.5?d/(2-max-min):d/(max+min);
+    if(max===r)h=(g-b)/d+(g<b?6:0);
+    else if(max===g)h=(b-r)/d+2;
+    else h=(r-g)/d+4;
+    h*=60;
+  }
+  return {h,s,l};
+}
+function hslToHex(h,s,l){
+  h=((h%360)+360)%360;
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r,g,b;
+  if(h<60){r=c;g=x;b=0;}else if(h<120){r=x;g=c;b=0;}else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;}else if(h<300){r=x;g=0;b=c;}else{r=c;g=0;b=x;}
+  const toHex=v=>Math.round((v+m)*255).toString(16).padStart(2,'0');
+  return '#'+toHex(r)+toHex(g)+toHex(b);
+}
+/* Rotates a hex color's hue partway toward targetHue (shortest way round the
+   wheel) rather than replacing it outright, so a sprite's several palette
+   colors keep their relative contrast instead of all collapsing onto one
+   hue. Near-grey colors (outlines, highlights) are left alone — there's no
+   visible hue to shift when saturation is this low, and forcing one in just
+   tints blacks/whites/greys with visible fringing. */
+function teamTint(hex,targetHue,mix){
+  const {h,s,l}=hexToHsl(hex);
+  if(s<0.08)return hex;
+  let diff=((targetHue-h+540)%360)-180;
+  return hslToHex(h+diff*mix, Math.min(1,s*1.08), l);
+}
 function bakeSprite(id,spr){
   const rows=spr.rows, h=rows.length, w=Math.max(...rows.map(r=>r.length));
-  const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-  const o=oc.getContext('2d');
-  rows.forEach((r,y)=>{for(let x=0;x<r.length;x++){const c=spr.pal[r[x]];
-    if(c){o.fillStyle=c;o.fillRect(x,y,1,1);}}});
-  SPRC[id]={c:oc,w,h};
+  const render=(key,recolor)=>{
+    const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
+    const o=oc.getContext('2d');
+    rows.forEach((r,y)=>{for(let x=0;x<r.length;x++){const c0=spr.pal[r[x]];
+      if(c0){o.fillStyle=recolor?recolor(c0):c0;o.fillRect(x,y,1,1);}}});
+    SPRC[key]={c:oc,w,h};
+  };
+  render(id,null);
+  // AZURE/CRIMSON variants for team-owned entities (siege creeps, structures,
+  // reinforcements…) — picked at render time by e.team, see render.js. Baked
+  // for every sprite unconditionally; harmless and unused for anything that
+  // never carries a team.
+  const TH=(MOBA&&MOBA.teamColors)?MOBA.teamColors.map(c=>hexToHsl(c).h):[182,322];
+  render(id+'_t0',c=>teamTint(c,TH[0],0.45));
+  render(id+'_t1',c=>teamTint(c,TH[1],0.45));
 }
 
 /* Human-readable summary of what a relic actually does — the stat blocks are
