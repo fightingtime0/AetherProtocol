@@ -15,18 +15,18 @@
 
 <div id="hud" class="hidden">
   <div>
-    <div id="hpwrap"><div id="hpbar"></div></div>
-    <div class="rwrap" id="shwrap"><div id="shbar"></div></div>
-    <div class="rwrap"><div id="tbar"></div></div>
-    <div class="rwrap" id="xpwrap" style="display:none"><div id="xpbar"></div></div>
+    <div class="barrow"><div id="hpwrap"><div id="hpbar"></div></div><span id="hpTxt" class="bartxt"></span></div>
+    <div class="barrow" id="shRow" style="display:none"><div class="rwrap" id="shwrap"><div id="shbar"></div></div><span id="shTxt" class="bartxt"></span></div>
+    <div class="barrow"><div class="rwrap"><div id="tbar"></div></div><span id="tTxt" class="bartxt"></span></div>
+    <div class="barrow" id="xpwrap" style="display:none"><div class="rwrap"><div id="xpbar"></div></div><span id="xpTxt" class="bartxt"></span></div>
     <div class="hudtxt" style="margin-top:5px"><span id="hWaveLabel">WAVE</span> <span id="hWave" class="cyanc">1</span></div>
     <div id="wpnbar"></div>
+    <div id="hUpgrades"></div>
   </div>
   <div style="text-align:right">
     <div class="hudtxt">SCORE <span id="hScore" class="gold">0</span></div>
     <div class="hudtxt" style="margin-top:4px">◆ <span id="hShards" class="mag2">0</span></div>
     <div class="hudtxt" id="hPeers" style="margin-top:4px;color:var(--dim)"></div>
-    <div id="hUpgrades"></div>
   </div>
 </div>
 <!-- Nexus Siege: kills only at the top, so nothing collides with the boss bar -->

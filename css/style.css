@@ -107,16 +107,23 @@ body.picking #stickbase,body.picking #sticknub{display:none!important}
 kbd{background:#10152a;border:1px solid var(--edge);padding:2px 7px;border-radius:3px;color:var(--ink)}
 /* resource bars */
 .rwrap{width:150px;height:7px;background:#060810;border:2px solid var(--edge);margin-top:3px}
-#shwrap{height:6px;display:none}
+#shwrap{height:6px}
 #shbar{height:100%;background:linear-gradient(90deg,#3b7bd6,#bfe6ff);width:100%;transition:width .12s}
 #tbar{height:100%;background:linear-gradient(90deg,#2f6bff,var(--cyan));width:100%;transition:width .12s}
 #tbar.lock{background:repeating-linear-gradient(45deg,#2a4a52,#2a4a52 4px,#152830 4px,#152830 8px)}
 /* Nexus Siege experience bar — gold, to read as "progress" not "resource" */
 #xpbar{height:100%;background:linear-gradient(90deg,#c98a1e,#ffd35c);width:0;transition:width .12s}
-/* Upgrade readout: what your picked cards actually add up to */
-#hUpgrades{margin-top:6px;font-size:9px;line-height:1.5;color:#bfe6ff;text-align:right;
-  text-shadow:1px 1px 0 #000;max-width:150px;pointer-events:none}
-#hUpgrades span{display:inline-block;margin-left:6px;white-space:nowrap}
+/* Bar + number readout rows (HP/shield/T-charge/XP): the bar keeps its own
+   rwrap margin, the row just adds spacing between rows */
+.barrow{display:flex;align-items:center;gap:5px;margin-top:3px}
+.barrow .rwrap,.barrow #hpwrap{margin-top:0}
+.bartxt{font-size:8px;color:#dfe6ff;text-shadow:1px 1px 0 #000;white-space:nowrap}
+/* Upgrade readout: what your picked cards actually add up to. Lives in the
+   left HUD column now, under the weapon bar — same side as the rest of the
+   character readout. */
+#hUpgrades{margin-top:6px;font-size:9px;line-height:1.5;color:#bfe6ff;text-align:left;
+  text-shadow:1px 1px 0 #000;max-width:170px;pointer-events:none}
+#hUpgrades span{display:inline-block;margin-right:6px;white-space:nowrap}
 /* Nexus Siege — kill tally only, top centre. Deliberately narrow: the boss
    bar also lives at top-centre, and the two used to stack on each other. */
 #siegeBar{position:fixed;top:6px;left:50%;transform:translateX(-50%);

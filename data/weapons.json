@@ -186,10 +186,10 @@
     "id": "fireball",
     "glyph": "\u2742",
     "name": "Thermite Charge",
-    "type": "aimed",
+    "type": "thermite",
     "resource": "t",
     "cost": 9,
-    "desc": "Explodes in a {boom}px blaze",
+    "desc": "Thrown charge that slows in flight, then fuses into a {boom}px blaze",
     "cd": {
       "base": 1.44,
       "perLvl": 0.06,
@@ -199,20 +199,19 @@
       "base": 18,
       "perLvl": 0.2
     },
-    "count": {
-      "base": 1
-    },
     "boom": {
-      "base": 18,
-      "flat": 1.5
+      "base": 26,
+      "flat": 2.2
     },
-    "boomDmgFrac": 0.9,
-    "speed": 125,
+    "fuseTime": 1.1,
+    "decel": 90,
+    "speed": 150,
     "r": 3.5,
     "ci": 0,
     "sfx": "wFire",
     "spark": 1,
-    "dodge": "mine"
+    "dodge": "mine",
+    "mineFuse": 1.6
   },
   {
     "id": "chain",
@@ -245,20 +244,25 @@
   {
     "id": "smite",
     "glyph": "\u271e",
-    "name": "Orbital Smite",
+    "name": "Smite Pulse",
     "type": "smite",
     "resource": "t",
     "cost": 12,
-    "desc": "Marks a spot; after a beat the strike lands ({boom}px)",
+    "desc": "Pulses outward from you \u00b7 low dmg to {radius}px, dissipates. Dodge: targeted smite",
     "cd": {
-      "base": 1.72,
-      "perLvl": 0.08,
+      "base": 1.55,
+      "perLvl": 0.05,
       "min": 1.0
     },
     "dmg": {
-      "base": 38,
-      "flat": 6
+      "base": 5,
+      "perLvl": 0.09
     },
+    "radius": {
+      "base": 170,
+      "flat": 9
+    },
+    "pulseTime": 2.4,
     "boom": {
       "base": 20,
       "flat": 1.4
@@ -342,8 +346,8 @@
       "perLvl": 0.2
     },
     "boom": {
-      "base": 24,
-      "flat": 2
+      "base": 16,
+      "flat": 1.3
     },
     "impactFrac": 0.3,
     "speed": 110,
@@ -352,7 +356,7 @@
     "ci": 5,
     "sfx": "wBomb",
     "spark": 1,
-    "dodge": "mine"
+    "dodge": "snap"
   },
   {
     "id": "scatter",
@@ -391,16 +395,17 @@
     "type": "beam",
     "resource": "t",
     "cost": 6.2,
-    "desc": "Short continuous lance, {dmg} per tick",
+    "desc": "Short continuous lance that swings onto target, {dmg} per tick",
     "cd": {
       "base": 0.22
     },
     "dmg": {
-      "base": 11.4,
-      "perLvl": 0.08
+      "base": 14,
+      "perLvl": 0.1
     },
     "range": 110,
     "width": 3,
+    "turnRate": 3.2,
     "sfx": "wBeam",
     "dodge": "lash"
   },
@@ -411,7 +416,7 @@
     "type": "wave",
     "resource": "t",
     "cost": 6,
-    "desc": "Weaving round that snakes through {pierce} foes",
+    "desc": "{count} weaving rounds braided into a helix, each snakes through {pierce} foes",
     "cd": {
       "base": 1.05,
       "perLvl": 0.04,
@@ -422,7 +427,8 @@
       "perLvl": 0.17
     },
     "count": {
-      "base": 1
+      "base": 3,
+      "per": 1
     },
     "pierce": {
       "base": 3,
@@ -554,7 +560,7 @@
     "type": "leech",
     "resource": "t",
     "cost": 6,
-    "desc": "Short electric tether, {dmg}/s to whatever it latches onto",
+    "desc": "Electric tether, {dmg}/s to whatever it latches onto",
     "cd": {
       "base": 0.3
     },
@@ -562,7 +568,7 @@
       "base": 13,
       "perLvl": 0.16
     },
-    "range": 55,
+    "range": 100,
     "healFrac": 0,
     "ci": 4,
     "dodge": "snap",

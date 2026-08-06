@@ -28,10 +28,10 @@ function droneStats(def,lvl,rar,p){
            dmg:scaleVal(def.dmg,lvl)*dm*(p?p.st.dmgM:1) };
 }
 
-// orbit deliberately absent: fangs are summoned around the player, so the
-// weapon must fire even with nothing in range
-const NEEDS_TARGET={aimed:1,lance:1,lob:1,chain:1,smite:1,zone:1,scatter:1,beam:1,wave:1,boomerang:1,
-  flail:1,prism:1,mortar:1,leech:1};   // quake is self-centred, like orbit
+// orbit and smite deliberately absent: they're self-centred, so the weapon
+// must fire even with nothing in range — see BEHAVIORS below
+const NEEDS_TARGET={aimed:1,lance:1,lob:1,chain:1,zone:1,scatter:1,beam:1,wave:1,boomerang:1,
+  flail:1,prism:1,mortar:1,leech:1,thermite:1};   // quake is self-centred, like orbit
 const BEHAVIORS={
   aimed(def,p,w,tg){
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), n=cnt(def.count,w.lvl);
@@ -88,14 +88,14 @@ const BEHAVIORS={
         boomDmg:dmg*(OB.boomDmgFrac||.85)});
     }
   },
-  /* Orbital Smite — marks a SPOT, shrinks a targeting ring onto it, then
-     hits that spot. Deliberately does not track the target: dodging out
-     of the circle is the counterplay. */
-  smite(def,p,w,tg){
-    const SB=BAL.combat.smite;
-    S.mk.push({x:tg.x,y:tg.y,t:SB.markTime,tMax:SB.markTime,
-      r0:SB.startRadius,r:scaleVal(def.boom,w.lvl),
-      dmg:wDmg(def,w,p),owner:p.id});
+  /* Smite Pulse — a low-damage ring expands outward from the CASTER out to
+     long range, then dissipates. Self-centred like orbit/quake, so it needs
+     no target. The old mark-a-spot behavior lives on as this weapon's dodge
+     reaction ("markspot") — see onDodge() in sim.js. */
+  smite(def,p,w){
+    const dmg=wDmg(def,w,p);
+    const rMax=scaleVal(def.radius,w.lvl)||190, dur=def.pulseTime||2.2;
+    S.pu.push({x:p.x,y:p.y,r:0,rMax,spd:rMax/dur,dmg,owner:p.id,ttl:dur,hit:new Set()});
   },
   chain(def,p,w,tg){
     // now travels as a bolt; the chain only fires where it lands (see S.pb)
@@ -123,7 +123,16 @@ const BEHAVIORS={
     // The beam's own cooldown IS its damage tick, so its cadence is tuned in
     // weapons.json (cd 0.22 to match BAL.combat.dotTick) rather than routed
     // through dotReady() — same rhythm as every other DoT, no extra state.
-    const a=Math.atan2(tg.y-p.y,tg.x-p.x), range=def.range||220, dmg=wDmg(def,w,p);
+    // It swings onto a new target rather than snapping, same trick as the
+    // enemy structure lance — p.beamAim persists between shots.
+    const want=Math.atan2(tg.y-p.y,tg.x-p.x);
+    if(p.beamAim===undefined)p.beamAim=want;
+    else{
+      let da=want-p.beamAim; while(da>Math.PI)da-=TAU; while(da<-Math.PI)da+=TAU;
+      const step=(def.turnRate||3)*(def.cd(w)||BAL.combat.dotTick);
+      p.beamAim+=clamp(da,-step,step);
+    }
+    const a=p.beamAim, range=def.range||220, dmg=wDmg(def,w,p);
     const dx=Math.cos(a), dy=Math.sin(a), width=def.width||3;
     for(const e of S.en){ if(e.hp<=0)continue;
       const ex=e.x-p.x, ey=e.y-p.y, proj=ex*dx+ey*dy;
@@ -140,13 +149,17 @@ const BEHAVIORS={
       vx:rnd(-8,8),vy:rnd(-8,8),l:.12,ci:'#ff4fd8'});
   },
   wave(def,p,w,tg){ // weird-trajectory shot: sine-weaves toward its target heading
+    // All rounds share the SAME heading (no angle spread) but each gets a
+    // phase offset around the sine, so a multi-round burst braids around one
+    // shared line instead of fanning out — the more rounds, the more strands
+    // in the helix.
     const a=Math.atan2(tg.y-p.y,tg.x-p.x), dmg=wDmg(def,w,p), n=cnt(def.count,w.lvl);
     for(let i=0;i<n;i++){
-      const baseAng=a+(i-(n-1)/2)*(def.spreadStep||0), sp=def.speed*p.st.bspdM;
-      pbul({x:p.x,y:p.y,vx:Math.cos(baseAng)*sp,vy:Math.sin(baseAng)*sp,
+      const sp=def.speed*p.st.bspdM;
+      pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
         dmg,ci:def.ci||3,r:def.r||1.5,owner:p.id,pierce:cnt(def.pierce,w.lvl),
-        wob:1,baseAng,wx0:p.x,wy0:p.y,wspd:sp,wobT:0,
-        wfreq:def.wobFreq||6,wamp:def.wobAmp||14});
+        wob:1,baseAng:a,wx0:p.x,wy0:p.y,wspd:sp,wobT:0,
+        wfreq:def.wobFreq||6,wamp:def.wobAmp||14,wobPh:n>1?i/n*TAU:0});
     }
   },
   /* ---- new archetypes ---- */
@@ -199,6 +212,18 @@ const BEHAVIORS={
     pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,dmg,ci:def.ci||4,
       r:def.r||2,owner:p.id,pierce:cnt(def.pierce,w.lvl)||20,ttl:def.ttl||3.2,
       rang:1,outT:def.outT||0.5,rspd:sp*1.15,rt:0,returning:false,spark:wpnSpark(def)});
+  },
+  /* Thermite Charge — a thrown grenade, not a bolt. It carries no contact
+     damage of its own: high pierce lets it sail straight through anyone in
+     its path, it DECELERATES as it flies (see b.decel in sim.js), and a
+     fixed fuse (ttl) — not impact — is what detonates it, via the generic
+     "dead bullet with .boom explodes" path in sim.js. */
+  thermite(def,p,w,tg){
+    const a=Math.atan2(tg.y-p.y,tg.x-p.x), sp=def.speed*p.st.bspdM;
+    pbul({x:p.x,y:p.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      dmg:0,r:def.r||3.5,ci:def.ci||0,owner:p.id,
+      ttl:def.fuseTime||1.1,pierce:99,decel:def.decel||90,spark:wpnSpark(def),
+      boom:scaleVal(def.boom,w.lvl),boomDmg:wDmg(def,w,p)});
   },
 };
 /* Resolved from hostUpdate once a smite mark's timer expires. */

@@ -114,7 +114,7 @@ function newMobaSim(playersInfo){
   if(DIFFS[MOBA.difficulty||'normal'])diffKey=MOBA.difficulty||'normal';
   obstacles=genMobaWorld();
   eidc=1; bidc=1;
-  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],obj:null,sx:[],
+  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],pu:[],dnQ:[],obj:null,sx:[],
      wave:1,score:0,t:0,waveT:0,
      spawnQ:[],spawnT:0,waveDone:true,miniSpawned:true,over:false,shake:0,
      pvp:true,          // opposing players can shoot each other
@@ -290,35 +290,51 @@ function mobaBuyMercs(team){
   }
 }
 
-/* ---------------- THE ARBITER (neutral world boss) ----------------
+/* ---------------- INFECTED MOTHERSHIP (neutral world boss) ----------------
    A third faction. TEAM_WILD is neither side, and hostile() already returns
    true for any mismatched pair, so it fights — and is fought by — everything
    on the map with no special cases.
 
-   It sweeps the battleground corner to corner. Leave it alone for long
-   enough and it ROOTS, becoming a hive: it stops moving, spawns its own
-   creeps in orbit, and effectively turns into a third nexus. Killing it in
-   that state ends the match as a double win over both sides. */
+   It roams the middle of the battleground, away from either base. Leave it
+   alone for long enough and it ROOTS, becoming a HIVE NEXUS: it stops
+   moving, spawns its own creeps in orbit, and effectively turns into a third
+   nexus. Killing it in that state ends the match as a double win over both
+   sides. It also drifts a handful of weak escort spores — see
+   mobaSpawnSwarmling(). */
 const TEAM_WILD=2;
+/* A random point inside the roam box centred on the map — the mothership's
+   whole patrol stays away from both bases by construction. */
+function mobaWorldBossRoamPoint(){
+  const WB=MOBA.worldBoss, cx=WW/2, cy=WH/2;
+  const rw=(WB.roamW||900)/2, rh=(WB.roamH||260)/2;
+  return {x:rnd(cx-rw,cx+rw), y:rnd(cy-rh,cy+rh)};
+}
 function mobaSpawnWorldBoss(){
   const WB=MOBA.worldBoss;
-  const corner=irnd(0,4);
-  const pad=WW*0.18, padY=WH*0.22;
-  const from={x:(corner&1)?WW-pad:pad, y:(corner&2)?WH-padY:padY};
-  const to  ={x:(corner&1)?pad:WW-pad, y:(corner&2)?padY:WH-padY};
-  const boss=mkTeamEnt('warden',TEAM_WILD,from.x,from.y);
-  boss.wbTo=to; boss.wbIdle=0; boss.hive=0; boss.wild=1;
+  const start=mobaWorldBossRoamPoint();
+  const boss=mkTeamEnt('warden',TEAM_WILD,start.x,start.y);
+  boss.wbTo=mobaWorldBossRoamPoint(); boss.wbIdle=0; boss.hive=0; boss.wild=1;
   S.en.push(boss);
   S.worldBoss=boss.id;
   // orbiting shards: the existing multi-part shield logic keys off e.core
   const parts=(ET[ETI.warden].parts)||[];
   parts.forEach((pid,i)=>{
-    const sh=mkTeamEnt(pid,TEAM_WILD,from.x,from.y);
+    const sh=mkTeamEnt(pid,TEAM_WILD,start.x,start.y);
     sh.core=boss.id; sh.orbIdx=i; sh.ph=i/parts.length*TAU; sh.wild=1;
     S.en.push(sh);
   });
-  toastAll('⚠⚠ THE ARBITER ENTERS THE FIELD ⚠⚠');
+  toastAll('⚠⚠ THE INFECTED MOTHERSHIP ENTERS THE FIELD ⚠⚠');
   sfxE('boss',boss.x,boss.y);
+}
+/* A few weak spores drift near the mothership and give chase to anything
+   that strays close — the same soak-a-hit role as a player's servitor, just
+   neutral and disposable. escortOf (NOT core) is what links them, so they
+   never count toward the core's damage shield. */
+function mobaSpawnSwarmling(boss){
+  const WB=MOBA.worldBoss, a=rnd(0,TAU), r=WB.swarmRoamRadius||70;
+  const sp=mkTeamEnt('spore',TEAM_WILD,boss.x+Math.cos(a)*r,boss.y+Math.sin(a)*r);
+  sp.wild=1; sp.escortOf=boss.id; sp.ph=a;
+  S.en.push(sp);
 }
 function mobaWorldBossTick(dt){
   const WB=MOBA.worldBoss;
@@ -336,7 +352,7 @@ function mobaWorldBossTick(dt){
   if(!boss.hive&&boss.wbIdle>=WB.idleToHive){
     boss.hive=1; boss.spd=0;
     boss.hp=boss.maxhp=boss.maxhp*1.5;         // rooted, but far harder to remove
-    toastAll('☠ THE ARBITER HAS ROOTED — destroy the hive to end this');
+    toastAll('☠ THE INFECTED MOTHERSHIP HAS ROOTED INTO A HIVE NEXUS — destroy it to end this');
     sfxE('boss',boss.x,boss.y);
   }
   if(boss.hive){
@@ -349,6 +365,13 @@ function mobaWorldBossTick(dt){
       c.wild=1; c.hiveOf=boss.id; c.ph=a;
       S.en.push(c);
     }
+  }
+  // maintain a small standing escort of weak spores, hive or not
+  boss.swarmT=(boss.swarmT||0)-dt;
+  const swarmAlive=S.en.filter(e=>e.escortOf===boss.id&&e.hp>0).length;
+  if(boss.swarmT<=0&&swarmAlive<(WB.swarmMax||4)){
+    boss.swarmT=WB.swarmEvery||6;
+    mobaSpawnSwarmling(boss);
   }
 }
 /* Any damage resets the idle timer — that is what "if no one attacks it"
@@ -374,8 +397,8 @@ function mobaWorldBossDefeated(){
   if(team!==undefined)
     for(const q of S.players.values()) if(q.team===team)grantXp(q,xp);
   toastAll(wasHive
-    ? (teamName(team||0)+' TORE DOWN THE HIVE — double victory!')
-    : (teamName(team||0)+' felled THE ARBITER!'));
+    ? (teamName(team||0)+' TORE DOWN THE HIVE NEXUS — double victory!')
+    : (teamName(team||0)+' purged THE INFECTED MOTHERSHIP!'));
   sfxE('bosskill',S.wbX,S.wbY);
   // a rooted hive is a third nexus: bringing it down ends the match outright
   if(wasHive&&!S.mobaOver){ S.mobaOver=(team===undefined?1:team+1); mobaEnd(team||0,true); }

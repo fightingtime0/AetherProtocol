@@ -97,44 +97,29 @@
     }
   },
   {
-    "id": "tgen",
+    "id": "trg",
     "glyph": "\u267b",
-    "name": "Flux Generator",
-    "special": "fluxGenerator",
-    "desc": "Trades the empty-lock reload for constant slow trickle regen \u2014 never hard-locks again",
-    "style": "flow"
+    "name": "Coolant Loop",
+    "stats": {
+      "tRegen": 3
+    }
   },
   {
-    "id": "tover",
-    "glyph": "\u2622",
-    "name": "Redline Cell",
-    "special": "overclockCell",
-    "desc": "\u221250% max T-charge \u00b7 recharges 4\u00d7 faster once tripped \u00b7 leaks 2 T/s even sitting idle",
-    "style": "burst"
+    "id": "trl",
+    "glyph": "\u21bb",
+    "name": "Rapid Cycler",
+    "stats": {
+      "tRchM": 1.3
+    }
   },
   {
-    "id": "tvent",
-    "glyph": "\u25c9",
-    "name": "Vent Capacitor",
-    "special": "ventCapacitor",
-    "desc": "Every kill dumps +2 residual T-charge back into your cell",
-    "style": "flow"
-  },
-  {
-    "id": "tghost",
-    "glyph": "\u25cc",
-    "name": "Ghost Rounds",
-    "special": "ghostRounds",
-    "desc": "+15% chance any shot costs 0 T-charge (stacks)",
-    "style": "burst"
-  },
-  {
-    "id": "tkin",
-    "glyph": "\u21c4",
-    "name": "Kinetic Battery",
-    "special": "kineticBattery",
-    "desc": "T-charge regens while you're moving, bleeds away while you stand still",
-    "style": "flow"
+    "id": "pwrcost",
+    "glyph": "\u2620",
+    "name": "Overtuned Rounds",
+    "stats": {
+      "dmgM": 1.2,
+      "costM": 1.25
+    }
   },
   {
     "id": "glass",

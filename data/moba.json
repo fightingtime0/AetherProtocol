@@ -134,9 +134,11 @@
     "turnRate": 1.6
   },
   "worldBoss": {
-    "_comment": "Neutral third team. Sweeps the map diagonally after creep wave 15; if ignored it roots and becomes a hive-nexus.",
+    "_comment": "Neutral third team (INFECTED MOTHERSHIP). Roams the middle of the map after creep wave 15; if ignored it roots and becomes a HIVE NEXUS.",
     "afterCreepWave": 15,
     "sweepSpeed": 26,
+    "roamW": 900,
+    "roamH": 260,
     "idleToHive": 15,
     "hiveOrbitRadius": 90,
     "hiveOrbitSpeed": 0.6,
@@ -146,6 +148,10 @@
     "hiveChestsOnDeath": 12,
     "xpReward": 600,
     "hiveXpReward": 1200,
-    "laserTargets": 2
+    "laserTargets": 2,
+    "swarmMax": 4,
+    "swarmEvery": 6,
+    "swarmChaseRadius": 90,
+    "swarmRoamRadius": 70
   }
 }

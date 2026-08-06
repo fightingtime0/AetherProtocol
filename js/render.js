@@ -10,6 +10,8 @@ addEventListener('resize',fit); fit();
 
 const PB_COLS=['#ffd35c','#4ef0e8','#ff4fd8','#b3a6ff','#7cff6b','#ffffff'];
 const EBCOLS=['#ffd35c','#4ef0e8','#ff4fd8','#b3a6ff','#7cff6b'];
+// floatNums (floating combat text) is declared in sim.js, next to dmgNumE() —
+// it's filled from there and from applySnap() (net.js), read only here.
 
 function drawImgC(img,x,y,flashAmt,scl=1){
   const w=img.width*scl,h=img.height*scl;
@@ -267,6 +269,16 @@ function render(){
     ctx.beginPath();ctx.arc(mx,my,rEnd,0,TAU);ctx.stroke();  // the actual blast
     ctx.globalAlpha=1;
   }
+  // Smite Pulse: the opposite of the mark above — a ring that EXPANDS out
+  // from the caster until it dissipates at max range
+  const pulses=isHost?(S.pu||[]):(V&&V.pu||[]);
+  for(const pu of pulses){
+    const pux=isHost?pu.x:pu[0], puy=isHost?pu.y:pu[1], pur=isHost?pu.r:pu[2];
+    if(!vis(pux,puy,pur+6))continue;
+    ctx.globalAlpha=.45; ctx.strokeStyle='#ffd35c'; ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(pux,puy,pur,0,TAU);ctx.stroke();
+    ctx.globalAlpha=1;
+  }
   // enemies
   for(const e of en){
     const ex=isHost?e.x:e.dx, ey=isHost?e.y:e.dy;
@@ -282,7 +294,7 @@ function render(){
       ctx.globalAlpha=.55+Math.sin(now()/140)*.15; ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(ex,ey,14*scl,0,TAU);ctx.stroke(); ctx.globalAlpha=1; ctx.lineWidth=1;
     }
-    // lances — the Arbiter runs two at once, everything else runs one
+    // lances — the mothership runs two at once, everything else runs one
     const beamCol=(e.team!==undefined&&e.team>=0)?teamColor(e.team):'#ff4fd8';
     const drawBeam=(on,ang,len)=>{
       if(!on||!(len>0))return;
@@ -395,6 +407,24 @@ function render(){
       ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(bx2,by2);ctx.stroke();
       ctx.lineWidth=1;
     }
+    // Arc Tendril idle: equipped, off cooldown, but nothing in reach — a
+    // tesla arc jitters around the ring showing exactly how far it can hit
+    const leechR=p.leechIdleR||0;
+    if(!p.dead&&leechR>0){
+      ctx.globalAlpha=.35; ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(px,py,leechR,0,TAU);ctx.stroke();
+      ctx.globalAlpha=1;
+      for(let i=0;i<3;i++){
+        const a3=rnd(0,TAU), rr=rnd(leechR*0.3,leechR);
+        const midA=a3+rnd(-.3,.3), midR=rr*rnd(.4,.7);
+        ctx.strokeStyle='#e8ecff'; ctx.globalAlpha=rnd(.4,.9); ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(px,py);
+        ctx.lineTo(px+Math.cos(midA)*midR,py+Math.sin(midA)*midR);
+        ctx.lineTo(px+Math.cos(a3)*rr,py+Math.sin(a3)*rr);
+        ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
     // shield shimmer
     const shOn=(p.shield||0)>0;
     if(!p.dead&&shOn){ctx.globalAlpha=.25;ctx.strokeStyle='#4ef0e8';
@@ -416,6 +446,17 @@ function render(){
   // dash pip
   if(!myPos.dead){ctx.fillStyle=myPos.dashT<=0?'#ffd35c':'#39415f';
     ctx.fillRect(Math.round(myPos.x-1),Math.round(myPos.y+8),3,1);}
+  // floating damage numbers — drift up and fade, same list host or client
+  floatNums=floatNums.filter(n=>now()-n.t<750);
+  ctx.textAlign='center'; ctx.font='bold 8px monospace';
+  for(const n of floatNums){
+    const age=(now()-n.t)/750, fy2=n.y-age*14;
+    ctx.globalAlpha=1-age;
+    ctx.fillStyle='#000'; ctx.fillText(n.v,Math.round(n.x)+1,Math.round(fy2)+1);
+    ctx.fillStyle=n.hurt?'#ff5c47':'#ffe8a3';
+    ctx.fillText(n.v,Math.round(n.x),Math.round(fy2));
+  }
+  ctx.globalAlpha=1;
   ctx.restore();
   drawMinimap(en,players,isHost);
 }
@@ -451,24 +492,31 @@ function updateHUD(){
   if(role!=='client'&&S){me=S.players.get(myId);wave=S.wave;score=S.score;shards=me?me.shards:0;}
   else if(V){me=V.players.get(myId);wave=V.wave;score=V.score;shards=me?me.shards:0;}
   if(me){$('hpbar').style.width=Math.max(0,me.hp/me.maxhp*100)+'%';
-    const tp=role!=='client'?me.t/me.tMax*100:(me.t||0);
-    $('tbar').style.width=clamp(tp,0,100)+'%';
+    $('hpTxt').textContent=Math.max(0,Math.round(me.hp))+'/'+Math.round(me.maxhp)+' H';
+    // t/tMax now ride the snapshot raw for both host and client, so this
+    // needs no role branching any more — see net.js snap()/applySnap()
+    const tMax=me.tMax||1;
+    $('tbar').style.width=clamp(me.t/tMax*100,0,100)+'%';
     $('tbar').classList.toggle('lock',!!me.tLock);
+    $('tTxt').textContent=Math.round(me.t)+'/'+Math.round(tMax)+' E'+(me.tLock?' ⏳':'');
     // shield bar only shows if you have any shield capacity
     const shMax=me.shieldMax||0;
-    $('shwrap').style.display=shMax>0?'block':'none';
-    if(shMax>0)$('shbar').style.width=clamp((me.shield||0)/shMax*100,0,100)+'%';
+    $('shRow').style.display=shMax>0?'flex':'none';
+    if(shMax>0){$('shbar').style.width=clamp((me.shield||0)/shMax*100,0,100)+'%';
+      $('shTxt').textContent=Math.round(me.shield||0)+'/'+Math.round(shMax)+' S';}
   }
   // Nexus Siege: the wave counter is meaningless, so the slot shows your
   // level instead and the XP bar appears under the T-charge bar.
   const siege=(role!=='client'?!!(S&&S.moba):!!(V&&V.mb));
-  $('xpwrap').style.display=siege?'block':'none';
+  $('xpwrap').style.display=siege?'flex':'none';
   $('hWaveLabel').textContent=siege?'LEVEL':'WAVE';
   if(siege&&me){
     const lv=me.lvl||1;
     const need=(role!=='client')?xpNeeded(lv):(me.xpNeed||0);
-    $('xpbar').style.width=(need>0?clamp((me.xp||0)/need*100,0,100):0)+'%';
+    const pct=need>0?clamp((me.xp||0)/need*100,0,100):0;
+    $('xpbar').style.width=pct+'%';
     $('hWave').textContent=lv;
+    $('xpTxt').textContent=Math.round(pct)+'% XP · LV '+lv;
   }else $('hWave').textContent=wave;
   $('hScore').textContent=score; $('hShards').textContent=shards;
   // upgrade readout — what the picked cards add up to

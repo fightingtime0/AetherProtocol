@@ -388,11 +388,15 @@ function renderDiffChips(rowId,descId,onChange){
 }
 
 /* Bots occupy a normal lobby slot, so they flow through newMobaSim(),
-   the roster broadcast and the snapshot with no special handling. */
+   the roster broadcast and the snapshot with no special handling.
+   botClsSel is whatever class chip the host last picked in renderTeamUI();
+   it drives the NEXT bot added, not any bot already in the lobby. */
+let botClsSel=null;
 function addBot(team){
   const id=pidNext();
+  const cls=(botClsSel&&CLASSES.some(c=>c.id===botClsSel))?botClsSel:CLASSES[irnd(0,CLASSES.length)].id;
   lobby.players.push({id,name:'BOT-'+id,sprite:save.sprite,meta:{},
-    cls:CLASSES[irnd(0,CLASSES.length)].id,team,bot:true});
+    cls,team,bot:true});
   updatePeerList(); bcastRoster(); renderTeamUI(lobby.players);
 }
 function clearBots(){
@@ -438,6 +442,22 @@ function renderTeamUI(players){
     el.appendChild(b);
   });
   if(role==='host'){ // bots are host-side only; clients just see them in the roster
+    if(!botClsSel||!CLASSES.some(c=>c.id===botClsSel))botClsSel=CLASSES[0].id;
+    // pick what class the NEXT bot spawns as, before adding it
+    const clsWrap=document.createElement('div');
+    clsWrap.style.cssText='display:flex;flex-wrap:wrap;gap:2px;align-items:center;margin:2px 0';
+    const lbl=document.createElement('span');
+    lbl.textContent='BOT CLASS:'; lbl.style.cssText='font-size:10px;color:var(--dim);margin-right:2px';
+    clsWrap.appendChild(lbl);
+    CLASSES.forEach(c=>{
+      const b=document.createElement('button');
+      b.className='chip'+(botClsSel===c.id?' sel':'');
+      b.style.cssText='padding:3px 6px;font-size:10px';
+      b.textContent=c.g; b.title=c.n;
+      b.onclick=()=>{ botClsSel=c.id; renderTeamUI(lobby.players); };
+      clsWrap.appendChild(b);
+    });
+    el.appendChild(clsWrap);
     [0,1].forEach(t=>{
       const b=document.createElement('button');
       b.className='chip'; b.textContent='+ BOT '+teamName(t); b.style.opacity=.85;

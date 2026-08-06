@@ -16,27 +16,20 @@ function mkPlayer(id,name,sprite,cls){
     x:WW/2+rnd(-30,30),y:WH/2+rnd(-30,30),r:PB.hitboxRadius,
     hp:PB.hp,maxhp:PB.hp,inv:0,dead:false,shards:0,pickUntil:0,pickInvUntil:0,pickOpts:null,cls:c.id,
     t:PB.t.start,tMax:PB.t.start,tLock:false,
-    tGenerator:false,tOverclock:false,tLeak:0,tKillRefund:0,tFreeChance:0,tMoveRegen:0,
-    beamOnT:0,beamAng:0,beamLen:0,
+    beamOnT:0,beamAng:0,beamLen:0,leechIdleR:0,
     armor:0,shield:0,shieldMax:0,shieldCd:0,
     surgeT:0,dmgBoost:1,auraR:0,orbN:0,sabN:0,orbA:rnd(0,TAU),sabA:rnd(0,TAU),
     st:{spd:PB.speed,dmgM:1,cdM:1,crit:0,regen:0,greed:1,dashCd:PB.dashCooldown,bspdM:1,
-        mag:PB.pickupRadius,tRchM:1,
+        mag:PB.pickupRadius,tRchM:1,tRegen:0,costM:1,
         auraRegen:0,auraDmg:0,tithe:0,droneHpM:1,dmgTakenM:1},
     weapons:[{id:c.wpn,lvl:1,rar:'c',cd:0}]};
   return p;
 }
 /* custom relic effects that can't be expressed as a plain additive/multiplicative
-   stat — hooked from data.js's ps.f() via passives.json's "special" field, and
-   read every tick from hostUpdate()'s T-charge section / damageE(). */
-const SPECIAL_PASSIVES={
-  fluxGenerator:p=>{ p.tGenerator=true; p.tLock=false; },
-  overclockCell:p=>{ p.tMax=Math.max(6,Math.round(p.tMax*0.5)); p.t=Math.min(p.t,p.tMax);
-    p.tOverclock=true; p.tLeak+=2; },
-  ventCapacitor:p=>{ p.tKillRefund+=2; },
-  ghostRounds:p=>{ p.tFreeChance=Math.min(.6,p.tFreeChance+.15); },
-  kineticBattery:p=>{ p.tMoveRegen+=10; },
-};
+   stat — hooked from data.js's ps.f() via passives.json's "special" field.
+   Nothing uses this right now (the old T-charge "mode" relics were removed —
+   see passives.json), but the hook stays wired for whatever needs it next. */
+const SPECIAL_PASSIVES={};
 function applyMetaObj(p,m){
   m=m||{};
   p.metaObj=m; // stashed so a persistent-mode respawn can rebuild this player from scratch
@@ -57,7 +50,7 @@ function statSummary(p){
   const out=[], b=p.base, st=p.st;
   const pct=(cur,base)=>Math.round((cur/base-1)*100);
   const add=(glyph,txt)=>out.push(glyph+' '+txt);
-  if(b.dmgM&&pct(st.dmgM,b.dmgM)!==0)   add('☄','+'+pct(st.dmgM,b.dmgM)+'% dmg');
+  if(b.dmgM&&pct(st.dmgM,b.dmgM)!==0)   add('☄','+'+pct(st.dmgM,b.dmgM)+'% pwr');
   if(b.spd&&pct(st.spd,b.spd)!==0)      add('➤','+'+pct(st.spd,b.spd)+'% move');
   if(b.cdM&&pct(b.cdM,st.cdM)!==0)      add('⚡','+'+pct(b.cdM,st.cdM)+'% rate'); // lower cdM = faster
   if(b.bspdM&&pct(st.bspdM,b.bspdM)!==0)add('»','+'+pct(st.bspdM,b.bspdM)+'% velocity');
@@ -91,7 +84,7 @@ function respawnPersistent(p){
 function newSim(playersInfo,opts){
   obstacles=genWorld();
   eidc=1; bidc=1;
-  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],obj:null,sx:[],
+  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],pu:[],dnQ:[],obj:null,sx:[],
      wave:0,score:0,t:0,waveT:0,
      spawnQ:[],spawnT:0,waveDone:false,miniSpawned:false,over:false,shake:0,
      // Battleground mode only: pvp = player bullets can hurt other players;
@@ -109,10 +102,19 @@ function newSim(playersInfo,opts){
   scatterItems(3);
 }
 /* Training range: a ring of dummies that come straight back, so you can read a
-   weapon's damage and rhythm without a wave timer pressuring you. */
+   weapon's damage and rhythm without a wave timer pressuring you. Plus a few
+   fixed-position extras for testing things the ring can't: AoE against a
+   pack, tracking against something that moves, and two boss-scale fights.
+   None of the extras are flagged .dummy — that flag drives the ring's own
+   "keep 6 alive" respawn loop (see hostUpdate), and these aren't part of it;
+   if you kill one it just stays dead, same as any other boss. */
 function trainingSetup(){
   S.wave=1; S.waveDone=true; S.miniSpawned=true; S.spawnQ=[];
   for(let i=0;i<6;i++)trainingDummy(i);
+  trainingCluster();
+  trainingRoamer();
+  trainingLaserBoss();
+  trainingChargerBoss();
 }
 function trainingDummy(i){
   const a=i/6*TAU, R=Math.min(WW,WH)*0.28;
@@ -120,6 +122,40 @@ function trainingDummy(i){
   e.x=clamp(WW/2+Math.cos(a)*R,20,WW-20);
   e.y=clamp(WH/2+Math.sin(a)*R,20,WH-20);
   e.hp=e.maxhp=4000; e.spd=0; e.dummy=1; e.slot=i;
+  S.en.push(e);
+}
+/* A bunched pack of weak imps — read AoE spread and pierce against a crowd
+   instead of one dummy at a time. */
+function trainingCluster(){
+  const cx=clamp(WW*0.22,40,WW-40), cy=clamp(WH*0.75,40,WH-40);
+  for(let i=0;i<7;i++){
+    const e=mkE('imp');
+    e.x=clamp(cx+rnd(-16,16),20,WW-20); e.y=clamp(cy+rnd(-16,16),20,WH-20);
+    e.hp=e.maxhp=180;
+    S.en.push(e);
+  }
+}
+/* One live, moving target — everything else in the range stands still. */
+function trainingRoamer(){
+  const e=mkE('wisp');
+  e.x=clamp(WW*0.78,20,WW-20); e.y=clamp(WH*0.25,20,WH-20);
+  e.hp=e.maxhp=3500;
+  S.en.push(e);
+}
+/* Base Guardian: a boss that mostly holds its post (patrol-radius orbit) and
+   leans on its structure-style laser — off in its own corner of the range. */
+function trainingLaserBoss(){
+  const e=mkE('basebss');
+  e.x=clamp(WW*0.85,40,WW-40); e.y=clamp(WH*0.8,40,WH-40);
+  e.homeX=e.x; e.homeY=e.y;
+  S.en.push(e);
+}
+/* Siege Lord: a miniboss that marches toward a goal point and charges —
+   a moving, hard-hitting target in its own corner. */
+function trainingChargerBoss(){
+  const e=mkE('siegelord');
+  e.x=clamp(WW*0.15,40,WW-40); e.y=clamp(WH*0.15,40,WH-40);
+  e.goalX=clamp(WW*0.85,40,WW-40); e.goalY=clamp(WH*0.85,40,WH-40);
   S.en.push(e);
 }
 function scatterItems(n){
@@ -293,9 +329,12 @@ function onDodge(p){
       case 'lash':        // the beam is short-ranged now; the dodge is its reach
                           pbul({x:p.x,y:p.y,vx:Math.cos(aimAt)*300,vy:Math.sin(aimAt)*300,
                             dmg:base*1.6,ci:def.ci||2,r:1.5,owner:p.id,ttl:2.6,pierce:2}); break;
-      case 'mine':        pbul({x:p.x,y:p.y,vx:0,vy:0,dmg:base*0.3,ci:def.ci||5,r:3,
-                            owner:p.id,ttl:4,pierce:0,
-                            boom:scaleVal(def.boom,w.lvl)||16,boomDmg:base*0.8,spark:1}); break;
+      case 'mine':        // a real timed bomb now: high pierce so contact can't
+                          // set it off early, a short fixed fuse instead of a
+                          // touch trigger, and it hits harder for the wait
+                          pbul({x:p.x,y:p.y,vx:0,vy:0,dmg:0,ci:def.ci||5,r:3,
+                            owner:p.id,ttl:def.mineFuse||1.6,pierce:99,
+                            boom:scaleVal(def.boom,w.lvl)||16,boomDmg:base*1.1,spark:1}); break;
       case 'cloud':       S.zn.push({x:p.x,y:p.y,r:26,dps:base*0.6,start:base*0.6,
                             dur:2.2,ttl:2.2,owner:p.id,col:def.cloudColor}); break;
       case 'wellDrop':    S.zn.push({x:p.x,y:p.y,r:scaleVal(def.radius,w.lvl)||20,
@@ -361,12 +400,16 @@ function onDodgeEnd(p){
     const def=WPN[w.id]; if(!def||!def.dodgeAtEnd)continue;
     const base=wDmg(def,w,p);
     if(def.dodge==='whirl'){
-      // a full ring of square heads slammed down around the landing point
-      const n=8;
-      for(let i=0;i<n;i++){ const a2=i/n*TAU;
-        pbul({x:p.x+Math.cos(a2)*(def.reach||36),y:p.y+Math.sin(a2)*(def.reach||36),
-          vx:0,vy:0,dmg:base*0.7,ci:def.ci||3,r:4,owner:p.id,
-          ttl:0.35,pierce:0,spark:1,shape:'square'}); }
+      // a single small pulse at the landing spot — one compact hit, not a
+      // ring of heads scattered around it
+      const r=(def.reach||36)*0.6;
+      for(const e of S.en) if(e.hp>0&&hostile(p.team,e.team)&&Math.hypot(e.x-p.x,e.y-p.y)<r+e.r)
+        damageE(e,base*0.9,p.id);
+      hurtPlayersAt(p.x,p.y,r,base*0.9,p.id);
+      for(let i=0;i<10;i++){ const a2=rnd(0,TAU);
+        S.fx.push({x:p.x+Math.cos(a2)*r*0.6,y:p.y+Math.sin(a2)*r*0.6,
+          vx:Math.cos(a2)*60,vy:Math.sin(a2)*60,l:.25,ci:'#ffd35c'}); }
+      S.shake=Math.max(S.shake,.12);
       sfxE('wFlail',p.x,p.y);
     }else if(def.dodge==='stomp'){
       // delayed stomp: a mark that detonates a beat after you land
@@ -399,7 +442,7 @@ function dotReady(holder,dt){
   const span=holder.dotT; holder.dotT=0;
   return span;                       // seconds of damage to release now
 }
-/* Second, independent accumulator — the Arbiter runs two lances at once and
+/* Second, independent accumulator — the mothership runs two lances at once and
    they must not share a timer, or one would eat the other's releases. */
 function dotReady2(holder,dt){
   holder.dot2T=(holder.dot2T||0)+dt;
@@ -441,6 +484,18 @@ function hurtPlayersAt(x,y,r,dmg,ownerId,dot){
    ability every tick and left the victim immune to everything. A DoT is
    still BLOCKED by existing i-frames (a dash should save you); it just
    never grants new ones. */
+/* Floating combat text. Mirrors sfxE()'s split exactly: immediate local
+   playback (floatNums, read by render()) plus a bounded queue (S.dnQ) that
+   rides the snapshot to remote clients — see net.js snap()/applySnap().
+   Declared here (not render.js) since sim.js is what writes it and the
+   headless test harness never loads render.js. */
+let floatNums=[];
+function dmgNumE(x,y,v,hurtFlag){
+  if(role==='client'||!v)return;
+  floatNums.push({x,y,v:Math.round(v),hurt:hurtFlag?1:0,t:now()});
+  if(S&&conns.length&&S.dnQ.length<20)
+    S.dnQ.push([Math.round(x),Math.round(y),Math.round(v),hurtFlag?1:0]);
+}
 function hurt(p,amt,srcId,dot){
   if(p.inv>0||p.dead||now()<p.pickInvUntil)return;
   if(srcId!==undefined&&srcId!==p.id)p.lastHitBy=srcId;
@@ -469,6 +524,7 @@ function hurt(p,amt,srcId,dot){
     if(amt<=0)return;
   }
   p.hp-=amt; sfxE('hurt',p.x,p.y);
+  if(!dot)dmgNumE(p.x,p.y-8,amt,1);
   if(!dot||Math.random()<.15)
     for(let i=0;i<8;i++)S.fx.push({x:p.x,y:p.y,vx:rnd(-50,50),vy:rnd(-50,50),l:.4,ci:'#ff5c47'});
   if(p.hp<=0){ p.hp=0; p.dead=true; sfxE('down');
@@ -514,7 +570,7 @@ function applyClientHit(p,kind,id){
 }
 function toastAll(m){ toast(m); bcast({t:'ts',m}); }
 function damageE(e,dmg,owner,quiet){
-  if(S&&S.moba&&e&&e.wild){          // the Arbiter: track aggression + last hitter
+  if(S&&S.moba&&e&&e.wild){          // the mothership: track aggression + last hitter
     mobaWorldBossPoked(e);
     if(owner!==undefined)S.wbLastHitBy=owner;
     if(e.id===S.worldBoss){ S.wbX=e.x; S.wbY=e.y; S.wbWasHive=e.hive?1:0; }
@@ -529,7 +585,7 @@ function damageE(e,dmg,owner,quiet){
     if(src&&!hostile(src.team,e.team))return;
   }
   if(e.shielded)dmg*=BAL.combat.shieldedDmgFrac; // multi-part boss: core barely scratched while any part still lives
-  e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit',e.x,e.y);}
+  e.hp-=dmg; if(!quiet){e.flash=.08;sfxE('hit',e.x,e.y);dmgNumE(e.x,e.y-6,dmg,0);}
   if(e.hp<=0&&!e.deadDone){ e.deadDone=true;
     S.score+=e.sc; sfxE(e.boss?'bosskill':'kill',e.x,e.y);
     const p=S.players.get(owner);
@@ -537,7 +593,6 @@ function damageE(e,dmg,owner,quiet){
       grantXp(p,xp);                 // siege upgrades are earned by killing
       grantAssistXp(p,xp,null); }    // ...and allies share a cut
     if(p&&e.core!==undefined) toastAll(p.name+' downed a pylon!'); // multi-part boss part died
-    if(p&&p.tKillRefund>0) p.t=Math.min(p.tMax,p.t+p.tKillRefund);
     const sh=Math.round(e.sh*(p?p.st.greed:1)*DIFF().shardMult);
     if(p&&sh>0){
       // drop a collectible shard orb instead of an instant credit — anyone can walk over it
@@ -577,9 +632,6 @@ function genOpts(p){
     }
   }
   PASSIVES.forEach(ps=>{ if(ps.mp&&S.players.size<2)return;
-    // Charge-economy relics come in exclusive styles. Take one and the whole
-    // family stops appearing — no accidental mixing of incompatible builds.
-    if(ps.style&&p.energyStyle)return;
     // bots never even see the T-charge specials or Glass Reactor, so a roll
     // of three unsafe passives can't force one on them
     if(p.bot&&!botSafePassive(ps))return;
@@ -605,7 +657,7 @@ function optView(o){
 function applyOpt(p,o){
   if(o.t==='up')o.w.lvl++;
   else if(o.t==='new')p.weapons.push({id:o.k,lvl:1,rar:o.rar,cd:0});
-  else { if(o.ps.style)p.energyStyle=o.ps.style; o.ps.f(p); }
+  else o.ps.f(p);
 }
 function ownedView(p){return p.weapons.map(w=>({g:WPN[w.id].g,n:WPN[w.id].n,lvl:w.lvl,rar:w.rar}));}
 function startPick(p,keepDeadline){
@@ -688,32 +740,26 @@ function hostUpdate(dt){
     if(!p.dead)p.hp=Math.min(p.maxhp,p.hp+(p.st.regen+aR)*dt);
     // T-charge: default behavior is "reload after empty" — fire freely while
     // charge remains, then once it hits 0 it locks and recharges to full.
-    // Flux Generator swaps that for constant trickle regen (see SPECIAL_PASSIVES).
-    // Overclocked Cell (also there) keeps the lock but adds a fast recharge
-    // multiplier + a passive leak that drains charge even while idle.
+    // Coolant Loop (tRegen) adds a flat trickle while NOT locked, so it just
+    // delays how often you hit the lock rather than replacing it. Rapid
+    // Cycler (tRchM) speeds up the recharge once you're locked, i.e. shorter
+    // reload delay. Both are plain stats now — no exclusive "mode" to pick.
     /* DEADLOCK GUARD. The lock only releases when charge reaches tMax, so
-       any drain that outpaces the recharge strands a player at zero charge
-       and they can never fire again. Three ways that happened:
-         · Redline Cell's leak (tLeak) kept draining while locked
-         · Kinetic Battery bled charge while standing still, also locked
-         · relics stacking tMax down to <=0 made `p.t<=0` permanently true
-       So: drains are suspended while locked (recharge is then strictly
-       monotonic), tMax can never fall below a floor, and a watchdog breaks
-       any lock that somehow still outlives its worst-case duration. */
+       any drain that outpaces the recharge would strand a player at zero
+       charge forever if tMax ever fell to (or below) zero. So: tMax can
+       never fall below a floor, and a watchdog breaks any lock that somehow
+       still outlives its worst-case duration. */
     const TMIN=PB.t.min||6, TMAXLOCK=PB.t.maxLockSec||12;
     if(!(p.tMax>=TMIN))p.tMax=TMIN;
     if(!(p.t>=0))p.t=0;                       // NaN guard
-    if(p.tLeak>0&&!p.tLock) p.t=Math.max(0,p.t-p.tLeak*dt);
-    if(p.tGenerator&&!p.tLock){
-      p.t=Math.min(p.tMax,p.t+PB.t.genRate*p.st.tRchM*dt);
-    }else if(p.tLock){
-      const rchMult=p.tOverclock?4:1;
-      p.t+=Math.max(PB.t.rechargeRate*rchMult*p.st.tRchM,TMIN*.25)*dt; // always makes progress
+    if(!p.tLock){
+      if(p.st.tRegen>0)p.t=Math.min(p.tMax,p.t+p.st.tRegen*dt);
+    }else{
+      p.t+=Math.max(PB.t.rechargeRate*p.st.tRchM,TMIN*.25)*dt; // always makes progress
       if(p.t>=p.tMax){p.t=p.tMax;p.tLock=false;}
     }
     // One rule for every build: the instant charge drops below 1 the cell goes
-    // into reload. Trickle-regen relics no longer dodge the lockout, they just
-    // refill faster once it starts.
+    // into reload.
     if(p.t<1&&!p.tLock){ p.t=0; p.tLock=true; }
     if(p.tLock){
       p.tLockT=(p.tLockT||0)+dt;
@@ -721,12 +767,6 @@ function hostUpdate(dt){
         if(p.id===myId)toast('⚡ Charge cell reset'); }
     }else p.tLockT=0;
     p.beamOnT=Math.max(0,(p.beamOnT||0)-dt);
-    // Kinetic Battery: charge builds while you're moving, bleeds while you camp
-    if(p.tMoveRegen>0&&!p.tLock){ // never bleed while locked — see the deadlock guard above
-      const moved=Math.hypot(p.x-(p.prevX??p.x),p.y-(p.prevY??p.y));
-      p.t=moved>0.15?Math.min(p.tMax,p.t+p.tMoveRegen*dt):Math.max(0,p.t-p.tMoveRegen*.4*dt);
-    }
-    p.prevX=p.x; p.prevY=p.y;
     // shield: regenerates after not being hit for a while
     if(p.shieldMax>0){
       p.shieldCd=Math.max(0,p.shieldCd-dt);
@@ -752,7 +792,21 @@ function hostUpdate(dt){
     for(const w of p.weapons){
       if(WPN[w.id].passiveSaber)p.sabN+=sabCountW(w);
     }
-    if(p.dead||now()<p.pickUntil)continue;
+    if(p.dead||now()<p.pickUntil){ p.leechIdleR=0; continue; }
+    // Arc Tendril (and anything else typed "leech"): when it's equipped but
+    // nothing is in reach, show its range as an idle tesla-spark ring rather
+    // than just doing nothing silently — see render.js.
+    p.leechIdleR=0;
+    for(const w of p.weapons){
+      const ldef=WPN[w.id]; if(!ldef||ldef.type!=='leech')continue;
+      const rng=ldef.range||90; let hasT=false;
+      for(const e of S.en){ if(e.hp<=0||!hostile(p.team,e.team))continue;
+        if((e.x-p.x)**2+(e.y-p.y)**2<=rng*rng){hasT=true;break;} }
+      if(!hasT&&S.pvp)for(const q of foePlayers(p)){
+        if((q.x-p.x)**2+(q.y-p.y)**2<=rng*rng){hasT=true;break;} }
+      p.leechIdleR=hasT?0:rng;
+      break;
+    }
     for(const w of p.weapons){
       const def=WPN[w.id];
       if(def.passiveSaber)continue;
@@ -775,8 +829,8 @@ function hostUpdate(dt){
             if(d<bd&&d<320*320){bd=d;tg=q;}}
           if(!tg)continue;}
         w.cd=def.cd(w)*p.st.cdM;
-        if(def.rt==='t'&&!(p.tFreeChance>0&&Math.random()<p.tFreeChance)){
-          p.t-=def.cost;
+        if(def.rt==='t'){
+          p.t-=def.cost*p.st.costM;
           if(p.t<=0){p.t=0;p.tLock=true;}
         }
         const od=p.st.dmgM; p.st.dmgM=od*p.dmgBoost;
@@ -1065,6 +1119,21 @@ function hostUpdate(dt){
     if(Math.random()<dt*18)S.fx.push({x:z.x+rnd(-z.r,z.r),y:z.y+rnd(-z.r,z.r),vx:0,vy:-10,l:.3,ci:'#b34fff'});
   }
   S.zn=S.zn.filter(z=>z.ttl>0);
+  // Smite Pulse rings: expand outward from where they were cast, tag anything
+  // the leading edge passes over exactly once (so a wide slow ring doesn't
+  // just melt everything it overlaps), then fade out at max range.
+  for(const pu of S.pu){
+    pu.ttl-=dt;
+    const nr=Math.min(pu.rMax,pu.r+pu.spd*dt);
+    for(const e of S.en){ if(e.hp<=0)continue;
+      const dd=Math.hypot(e.x-pu.x,e.y-pu.y);
+      if(dd>pu.r&&dd<=nr+e.r&&!pu.hit.has('e'+e.id)){ pu.hit.add('e'+e.id); damageE(e,pu.dmg,pu.owner); } }
+    for(const q of foePlayersOf(pu.owner)){
+      const dd=Math.hypot(q.x-pu.x,q.y-pu.y);
+      if(dd>pu.r&&dd<=nr+q.r&&!pu.hit.has('p'+q.id)){ pu.hit.add('p'+q.id); hurt(q,pu.dmg,pu.owner); } }
+    pu.r=nr;
+  }
+  S.pu=S.pu.filter(pu=>pu.ttl>0&&pu.r<pu.rMax);
   // publish this frame's stack counts, then reset the accumulators
   for(const q of S.players.values()){ q.slowStk=q.slowStkN||0; q.slowStkN=0; }
   for(const e of S.en){ e.slowStk=e.slowStkN||0; e.slowStkN=0; }
@@ -1120,7 +1189,13 @@ function hostUpdate(dt){
       if(!o||o.dead){ b.dead=true; }
       else{ b.orbA+=BAL.combat.orbit.spinSpeed*dt;
         b.x=o.x+Math.cos(b.orbA)*b.orbR; b.y=o.y+Math.sin(b.orbA)*b.orbR; }
-    }else{ b.x+=b.vx*dt; b.y+=b.vy*dt; }
+    }else{
+      // thrown charges (Thermite) slow down in flight rather than flying
+      // straight at a constant speed — see BEHAVIORS.thermite in weapons.js
+      if(b.decel){ const sp0=Math.hypot(b.vx,b.vy);
+        if(sp0>0){ const sp1=Math.max(sp0*0.15,sp0-b.decel*dt); const k=sp1/sp0; b.vx*=k; b.vy*=k; } }
+      b.x+=b.vx*dt; b.y+=b.vy*dt;
+    }
     b.ttl-=dt;
     // a player's bolts inherit their team, so they pass through friendly
     // structures instead of shredding their own base

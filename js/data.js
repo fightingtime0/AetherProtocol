@@ -40,9 +40,9 @@ function cdVal(spec,lvl){ if(!spec)return 1;
    P_LEVEL stats live on the player object, the rest on p.st.     */
 const STAT_KIND={
   maxhp:'add', armor:'add', shieldMax:'add', tMax:'add',
-  crit:'add', regen:'add', mag:'add', auraRegen:'add', auraDmg:'add', tithe:'add',
+  crit:'add', regen:'add', mag:'add', auraRegen:'add', auraDmg:'add', tithe:'add', tRegen:'add',
   dmgM:'mult', cdM:'mult', spd:'mult', greed:'mult', dashCd:'mult', bspdM:'mult',
-  tRchM:'mult', droneHpM:'mult', dmgTakenM:'mult'
+  tRchM:'mult', droneHpM:'mult', dmgTakenM:'mult', costM:'mult'
 };
 const P_LEVEL=new Set(['maxhp','armor','shieldMax','tMax']);
 function applyStats(p,stats,ranks=1){
@@ -68,13 +68,15 @@ const STAT_LABEL={
   auraDmg:  v=>pct(v)+' ally damage aura',
   auraRegen:v=>sign(v)+Math.abs(v)+' HP/s ally aura',
   tithe:    v=>pct(v)+' shard tithe to allies',
-  dmgM:     v=>pctM(v)+' damage',
+  dmgM:     v=>pctM(v)+' weapon power',
   spd:      v=>pctM(v)+' move speed',
   greed:    v=>pctM(v)+' shard yield',
   bspdM:    v=>pctM(v)+' projectile speed',
   tRchM:    v=>pctM(v)+' T-charge recharge rate',
+  tRegen:   v=>sign(v)+Math.abs(v)+' T-charge/s regen',
   droneHpM: v=>pctM(v)+' servitor HP',
   dmgTakenM:v=>pctM(v)+' damage taken',
+  costM:    v=>pctM(v)+' T-charge cost',
   cdM:      v=>pctM(1/v)+' fire rate',
   dashCd:   v=>'−'+Math.round((1-v)*100)+'% dash cooldown',
 };
@@ -121,11 +123,11 @@ function bakeSprite(id,spr){
 /* Human-readable summary of what a relic actually does — the stat blocks are
    data, so this renders them rather than duplicating the text by hand. */
 const STAT_WORDS={
-  spd:'move speed', dmgM:'damage', cdM:'fire rate', crit:'crit chance',
+  spd:'move speed', dmgM:'weapon power', cdM:'fire rate', crit:'crit chance',
   regen:'health regen', greed:'shard gain', dashCd:'dash cooldown',
   bspdM:'projectile speed', maxhp:'max HP', armor:'armor',
-  shieldMax:'shield', tMax:'charge capacity', tRchM:'recharge rate',
-  droneHpM:'servitor HP', dmgTakenM:'damage taken',
+  shieldMax:'shield', tMax:'charge capacity', tRchM:'recharge rate', tRegen:'charge regen',
+  droneHpM:'servitor HP', dmgTakenM:'damage taken', costM:'charge cost',
   auraRegen:'ally regen aura', auraDmg:'ally damage aura', tithe:'ally shard tithe',
   mag:'pickup radius'
 };
@@ -137,7 +139,7 @@ function passiveText(ps){
     // multiplicative stats hover around 1, additive ones do not
     if(k==='cdM'||k==='dashCd'||k==='dmgTakenM')
       out.push((v<1?'−':'+')+Math.round(Math.abs(1-v)*100)+'% '+name);
-    else if(Math.abs(v-1)<0.9&&['dmgM','spd','greed','bspdM','tRchM','droneHpM'].includes(k))
+    else if(Math.abs(v-1)<0.9&&['dmgM','spd','greed','bspdM','tRchM','droneHpM','costM'].includes(k))
       out.push((v>=1?'+':'−')+Math.round(Math.abs(v-1)*100)+'% '+name);
     else out.push((v>=0?'+':'')+v+' '+name);
   }

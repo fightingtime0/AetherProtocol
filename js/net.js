@@ -135,12 +135,13 @@ function snap(){
     pl.push([p.id,Math.round(p.x),Math.round(p.y),Math.round(p.hp),p.maxhp,
       (p.inv>0?1:0)|(p.dead?2:0)|(now()<p.pickUntil?4:0)|(p.tLock?8:0)|(p.beamOnT>0?16:0)|(p.sabLit?32:0),
       Math.round(effSpeed(p)),Math.round(p.st.dashCd*100),p.shards,
-      Math.round(p.t/p.tMax*100),
+      Math.round(p.t),
       p.orbN||0,p.sabN||0,
       Math.round(p.shield),Math.round(p.shieldMax),
       Math.round((p.beamAng||0)*100),Math.round(p.beamLen||0),
       p.team===undefined?-1:p.team,
-      p.lvl||0,Math.round(p.xp||0),p.lvl?xpNeeded(p.lvl):0]);
+      p.lvl||0,Math.round(p.xp||0),p.lvl?xpNeeded(p.lvl):0,
+      Math.round(p.tMax),Math.round(p.leechIdleR||0)]);
   const en=S.en.map(e=>[e.id,e.ti,Math.round(e.x),Math.round(e.y),
     Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0,
     e.team===undefined?-1:e.team,
@@ -153,6 +154,8 @@ function snap(){
   const mk=S.mk.map(m=>[Math.round(m.x),Math.round(m.y),Math.round(m.r),Math.round(m.r0),
     Math.round(m.t*100),Math.round(m.tMax*100)]);
   const ar=S.ar.map(a2=>[Math.round(a2.x1),Math.round(a2.y1),Math.round(a2.x2),Math.round(a2.y2)]);
+  const pu=(S.pu||[]).map(u=>[Math.round(u.x),Math.round(u.y),Math.round(u.r)]);
+  const dn=(S.dnQ||[]).splice(0,20); // queued damage-number pops, like sx below
   const shp=S.shops?S.shops.map(o=>[Math.round(o.x),Math.round(o.y),o.team,o.k==='merc'?0:1,Math.round(o.cd)]):0;
   const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r),z.col||0]);
   let ob=0;
@@ -164,13 +167,13 @@ function snap(){
   if(S.moba){ const n0=S.en.find(e=>e.k==='nexus'&&e.team===0), n1=S.en.find(e=>e.k==='nexus'&&e.team===1);
     mb=[n0?Math.round(n0.hp/n0.maxhp*100):0, n1?Math.round(n1.hp/n1.maxhp*100):0, S.mobaOver||0,
         (S.kills&&S.kills[0])||0,(S.kills&&S.kills[1])||0]; }
-  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,mk,ar,shp,ob,sx,mb,pvp:S.pvp?1:0,ts:now()};
+  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,mk,ar,pu,dn,shp,ob,sx,mb,pvp:S.pvp?1:0,ts:now()};
 }
 function bcast(m){ for(const c of conns){try{c.send(m)}catch(e){}} }
 function sendTo(pid,m){ const c=conns.find(c=>c._pid===pid); if(c){try{c.send(m)}catch(e){}} }
 
 /* ---------------- client view ---------------- */
-function blankView(){return {players:new Map(),en:new Map(),eb:[],pb:[],it:[],dr:[],zn:[],mk:[],ar:[],shp:0,obj:0,
+function blankView(){return {players:new Map(),en:new Map(),eb:[],pb:[],it:[],dr:[],zn:[],mk:[],ar:[],pu:[],shp:0,obj:0,
   wave:1,score:0,snapT:0,snapDt:80,pvp:false};}
 function applySnap(s){
   if(!V)V=blankView();
@@ -181,8 +184,9 @@ function applySnap(s){
   V.snapDt=V.snapT?V.snapDt*.7+raw*.3:80; V.snapT=t;
   V.wave=s.w; V.score=s.sc; V.pvp=!!s.pvp;
   if(s.sx)for(const k of s.sx){ if(Array.isArray(k))sfx(k[0],k[1],k[2]); else sfx(k); }
+  if(s.dn)for(const d of s.dn) floatNums.push({x:d[0],y:d[1],v:d[2],hurt:d[3],t});
   const seenP=new Set();
-  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm,lv,xp,xpN]=a; seenP.add(id);
+  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm,lv,xp,xpN,tMax,leechR]=a; seenP.add(id);
     let p=V.players.get(id);
     if(!p){p={id,dx:x,dy:y};V.players.set(id,p);}
     p.px=p.dx;p.py=p.dy;
@@ -190,9 +194,10 @@ function applySnap(s){
     if(Math.hypot(x-p.px,y-p.py)>90){p.px=x;p.py=y;}
     p.tx=x;p.ty=y;p.st=t;
     p.hp=hp;p.maxhp=mhp;p.inv=fl&1;p.dead=fl&2;p.picking=fl&4;p.tLock=!!(fl&8);p.beamOn=!!(fl&16);p.sabLit=!!(fl&32);p.shards=sh;
-    p.t=tp;p.orbN=orbN||0;p.sabN=sabN||0;
+    p.t=tp;p.tMax=tMax||1;p.orbN=orbN||0;p.sabN=sabN||0;
     p.shield=shd||0;p.shieldMax=shdMax||0;
     p.beamAng=(bAng||0)/100;p.beamLen=bLen||0;
+    p.leechIdleR=leechR||0;
     p.team=(tm===undefined||tm<0)?undefined:tm;
     p.lvl=lv||0; p.xp=xp||0; p.xpNeed=xpN||0;
     if(id===myId){
@@ -216,7 +221,7 @@ function applySnap(s){
     e.lang2=(lang2||0)/100; e.llen2=llen2||0; e.laser2On=!!llen2;}
   for(const id of [...V.en.keys()]) if(!seenE.has(id))V.en.delete(id);
   V.eb=s.eb; V.pb=s.pb; V.it=s.it; V.dr=s.dr||[]; V.zn=s.zn||[]; V.obj=s.ob||0;
-  V.mk=s.mk||[]; V.ar=s.ar||[]; V.shp=s.shp||0; // smite marks, chain arcs, shard pads
+  V.mk=s.mk||[]; V.ar=s.ar||[]; V.pu=s.pu||[]; V.shp=s.shp||0; // smite marks, pulse rings, chain arcs, shard pads
   V.mb=s.mb||0; // Nexus Siege HUD: [nexus0 hp%, nexus1 hp%, winner]
 }
 /* ---- latency compensation ----------------------------------------

@@ -121,7 +121,7 @@ function refreshLasersOn(p){
     if(e.laser2Tgt===key){ e.laser2Tgt=undefined; e.laser2Heat=0; }
   }
 }
-/* Second lance for the Arbiter. Same maths as structLaser but writes to its
+/* Second lance for the mothership. Same maths as structLaser but writes to its
    own lang2/llen2 fields and its own heat, so the two beams ramp and render
    independently instead of fighting over one set of state. */
 function structLaser2(e,tgt,dt,cfg){
@@ -306,13 +306,14 @@ function enemyAct(e,dt){
      }
      break; }
    case 'warden':{ const WB=MOBA.worldBoss, N=MOBA.nexus;
-     // Neutral world boss. Sweeps corner to corner until it roots into its
-     // hive form, then holds position as a third nexus. Twin lances: it
-     // burns TWO separate targets at once, unlike any structure.
+     // Neutral world boss. Roams the middle of the map — away from either
+     // base — until it roots into a hive nexus, then holds position as a
+     // third nexus. Twin lances: it burns TWO separate targets at once,
+     // unlike any structure.
      if(!e.hive&&e.wbTo){
        const gx=e.wbTo.x-e.x, gy=e.wbTo.y-e.y, gd=Math.hypot(gx,gy)||1;
        if(gd>8){ e.x+=gx/gd*WB.sweepSpeed*sm*dt; e.y+=gy/gd*WB.sweepSpeed*sm*dt; }
-       else{ e.wbTo={x:WW-e.wbTo.x, y:WH-e.wbTo.y}; } // bounce to the far corner
+       else{ e.wbTo=mobaWorldBossRoamPoint(); } // pick a fresh spot inside the middle
      }
      // twin lasers: pick two distinct victims
      const picks=[];
@@ -339,7 +340,7 @@ function enemyAct(e,dt){
      }
      e.ph+=dt*.6;
      break; }
-   case 'wardshard':{ // orbits the Arbiter and shields it while alive
+   case 'wardshard':{ // orbits the mothership and shields it while alive
      const core=S.en.find(c=>c.id===e.core);
      if(core&&core.hp>0){
        e.ph=(e.ph||0)+dt*1.1;
@@ -349,6 +350,26 @@ function enemyAct(e,dt){
        e.x+=ddx/dd*Math.min(dd*6,e.spd*3)*dt; e.y+=ddy/dd*Math.min(dd*6,e.spd*3)*dt;
      }else mv(dx/d,dy/d,.7);                       // core gone — fight on alone
      if(e.cd<=0){ e.cd=1.5; ebul(e.x,e.y,aim,74,4,1.5,e.team,MOBA.turret.damage); }
+     break; }
+   case 'wardswarm':{ // weak mothership escort: chases anything close, otherwise
+                       // drifts in a lazy orbit near wherever the mothership is now
+     const WB=MOBA.worldBoss;
+     const home=S.en.find(c=>c.id===e.escortOf&&c.hp>0);
+     let tgt=null,bd=(WB.swarmChaseRadius||90)**2;
+     for(const q of S.players.values()){ if(q.dead||!hostile(e.team,q.team))continue;
+       const dd=(q.x-e.x)**2+(q.y-e.y)**2; if(dd<bd){bd=dd;tgt=q;} }
+     for(const o of S.en){ if(o===e||o.hp<=0||o.wild||!hostile(e.team,o.team))continue;
+       const dd=(o.x-e.x)**2+(o.y-e.y)**2; if(dd<bd){bd=dd;tgt=o;} }
+     if(tgt){
+       const a2=Math.atan2(tgt.y-e.y,tgt.x-e.x);
+       e.x+=Math.cos(a2)*e.spd*sm*dt; e.y+=Math.sin(a2)*e.spd*sm*dt;
+     }else if(home){
+       e.ph=(e.ph||0)+dt*0.8;
+       const r=WB.swarmRoamRadius||70;
+       const tx=home.x+Math.cos(e.ph)*r, ty=home.y+Math.sin(e.ph)*r;
+       const ddx=tx-e.x, ddy=ty-e.y, dd2=Math.hypot(ddx,ddy)||1;
+       e.x+=ddx/dd2*e.spd*sm*dt; e.y+=ddy/dd2*e.spd*sm*dt;
+     }
      break; }
    /* ---- MOBA structures (see moba.js) ----
       All three are team-owned and fire team-tagged bolts, so they can
@@ -540,7 +561,7 @@ function enemyAct(e,dt){
        } }
      break;
   }
-  // The Arbiter is far larger than the cover scattered around the lane and
+  // The mothership is far larger than the cover scattered around the lane and
   // would pin itself on a rock mid-sweep; it simply wades through.
   if((e.spd>0||e.st===2)&&!e.wild) collideObstacles(e);
 }
