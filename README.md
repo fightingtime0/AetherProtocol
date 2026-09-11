@@ -1,5 +1,10 @@
 # AETHER//PROTOCOL
 
+Basically,-
+Inspired by Vampire Survivor, this is a pixel drawn style scifi/fantasy theme, Incremental, Bullet hell, to run on Web using Vercel and PVE/PVP multiplayer implementations using PeerJS.
+
+
+This is a -
 A pixel-art, peer-to-peer co-op **bullet-hell wave survival** game that runs entirely in the browser.
 No build step, no backend — static files only, deployable straight to **Vercel** or GitHub Pages.
 
