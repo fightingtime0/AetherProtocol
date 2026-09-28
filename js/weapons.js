@@ -245,7 +245,7 @@ function chainBurst(b){
       if(cur.weapons)hurt(cur,dmg,b.owner); else damageE(cur,dmg,b.owner);
     }
     let nx=null,bd=range*range;
-    for(const e of S.en) if(!hit.has('e'+e.id)&&e.hp>0){
+    for(const e of S.en) if(!hit.has('e'+e.id)&&e.hp>0&&!e.prop){
       if(p&&!hostile(p.team,e.team))continue;
       const d=(e.x-cur.x)**2+(e.y-cur.y)**2; if(d<bd){bd=d;nx=e;} }
     for(const q of foes) if(!hit.has('p'+q.id)&&!q.dead){

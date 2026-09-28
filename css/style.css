@@ -166,3 +166,6 @@ kbd{background:#10152a;border:1px solid var(--edge);padding:2px 7px;border-radiu
 #roomCode{font-size:22px;letter-spacing:.3em;color:var(--gold);margin:8px 0}
 #peerList{font-size:12px;color:var(--cyan);margin:6px 0;min-height:16px}
 .row{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
+
+/* Descent victory: the death screen title turns gold */
+#dTitle.win{color:var(--gold)!important;text-shadow:0 0 12px rgba(255,211,92,.5),3px 3px 0 #1a2440!important}

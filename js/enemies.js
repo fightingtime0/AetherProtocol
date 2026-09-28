@@ -21,6 +21,9 @@ function mkE(k){
   do{ const a=rnd(0,TAU), d=rnd(200,300);
     x=clamp(anchor.x+Math.cos(a)*d,12,WW-12); y=clamp(anchor.y+Math.sin(a)*d,12,WH-12);
   }while(tries++<8 && obstacles.some(o=>Math.hypot(o.x-x,o.y-y)<o.r+6));
+  // Descent: waves and mid-fight summons appear inside the locked room, on an
+  // S marker clear of every player (see dgSpawnPoint)
+  if(TM&&S&&S.dg){ const pt=dgSpawnPoint(); if(pt){ x=pt[0]; y=pt[1]; } }
   const D=DIFF(), WV=BAL.waves;
   const hpMul=(1+(S?S.wave:1)*WV.enemyHpPerWave*(0.7+(S?S.players.size:1)*0.3))*D.enemyHp;
   const base=T.boss?T.hp*D.enemyHp
@@ -172,7 +175,11 @@ function enemyAct(e,dt){
   if(e.ai==='prop')return;            // Descent crates/barrels: inert until broken
   const p=nearestFoe(e); if(!p)return;
   const ox=e.x, oy=e.y;                // Descent: for the wall sub-step at the end
-  const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1,aim=Math.atan2(dy,dx);
+  let dx=p.x-e.x,dy=p.y-e.y; const d=Math.hypot(dx,dy)||1,aim=Math.atan2(dy,dx);
+  // Descent: route around walls with the room's flow field. aim and d stay on
+  // the real target, so shooting and range checks are unchanged. Bosses and
+  // anything big skip it (boss rooms are open).
+  if(TM&&S.dg&&e.r<=12&&!e.boss){ const v=dgSteer(e,p); dx=v.x*d; dy=v.y*d; }
   const sm=e.slowT>0?0.45:1; e.slowT=Math.max(0,e.slowT-dt);
   e.cd-=dt;
   const mv=(sx,sy,m=1)=>{e.x+=sx*e.spd*sm*m*dt; e.y+=sy*e.spd*sm*m*dt;};

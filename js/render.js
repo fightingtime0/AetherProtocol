@@ -731,3 +731,34 @@ function updateHUD(){
     $('pickTimer').textContent=Math.ceil((pickDeadline-now())/1000);
   }
 }
+/* Exit hatch in the boss room: closed plate until the boss falls, then an
+   open shaft with a pulsing ring and the gather-and-hold progress arc. Host
+   reads S.dg.hatch; clients read the snapshot's dg field (V.dg). */
+function drawDungeonHatch(){
+  if(!TM||TM.boss===undefined||TM.boss<0)return;
+  const rm=TM.rooms[TM.boss]; if(!rm||!rm.hatch[0])return;
+  const [hx,hy]=rm.hatch[0];
+  if(!vis(hx,hy,60))return;
+  let open=false, hold=0;
+  if(role!=='client'&&S&&S.dg){ open=!!S.dg.hatch; hold=open?S.dg.hatch.hold/(DGN.hatchHoldSec||2):0; }
+  else if(V&&V.dg){ open=!!V.dg[4]; hold=(V.dg[5]||0)/100; }
+  const s=dgSpr('prop_hatch');
+  if(!open){ if(s)ctx.drawImage(s.c,Math.round(hx-s.w/2),Math.round(hy-s.h/2)); return; }
+  const t=now();
+  ctx.fillStyle='#05070d'; ctx.fillRect(Math.round(hx-7),Math.round(hy-7),14,14);
+  ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
+  ctx.strokeRect(Math.round(hx-8)+.5,Math.round(hy-8)+.5,15,15);
+  for(let k=0;k<3;k++){ // chevrons sinking into the shaft
+    const yy=hy-5+((t/180+k*3)%9);
+    ctx.globalAlpha=.4+.2*k; ctx.fillStyle='#4ef0e8';
+    ctx.fillRect(Math.round(hx-3),Math.round(yy),2,1); ctx.fillRect(Math.round(hx+1),Math.round(yy),2,1);
+    ctx.fillRect(Math.round(hx-1),Math.round(yy+1),2,1);
+  }
+  const R=DGN.hatchRadius||40, pulse=Math.sin(t/220)*2;
+  ctx.globalAlpha=.35; ctx.beginPath(); ctx.arc(hx,hy,R+pulse,0,TAU); ctx.stroke();
+  if(hold>0){ ctx.globalAlpha=.95; ctx.strokeStyle='#ffd35c'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(hx,hy,R-4,-Math.PI/2,-Math.PI/2+TAU*Math.min(1,hold)); ctx.stroke(); ctx.lineWidth=1; }
+  ctx.globalAlpha=1;
+  ctx.font='bold 7px monospace'; ctx.textAlign='center';
+  drawLabel(hx,hy+R+8,'▼ GATHER TO DESCEND','#4ef0e8');
+}

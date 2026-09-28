@@ -478,7 +478,7 @@ function clientOnData(c,d){
     case 'pk': showPickUI(d.opts,d.dl,d.own); break;
     case 'pkend': hidePickUI(); if(d.ups)myUpgrades=d.ups; break;
     case 'ts': toast(d.m); break;
-    case 'go': finishRun(d.wave,d.score,d.shards); break;
+    case 'go': finishRun(d.wave,d.score,d.shards,d.depth!==undefined?{victory:!!d.victory,depth:d.depth,floor:d.floor}:{}); break;
     case 'rs': obstacles=d.obstacles; if(d.ww){WW=d.ww;WH=d.wh;}
       if(d.diff&&DIFFS[d.diff])diffKey=d.diff;
       $('scrDeath').classList.add('hidden'); enterPlayClient(); break;

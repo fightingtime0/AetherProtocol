@@ -323,15 +323,17 @@ function show(id){['scrTitle','scrSetup','scrShop','scrBoard','scrPick','scrDeat
   if(id)$(id).classList.remove('hidden');}
 function saveName(){const n=$('nameInput').value.trim().toUpperCase().slice(0,12);
   save.name=n||'PILOT-'+irnd(10,99);persist();return save.name;}
-function refreshTitle(){ $('tBest').textContent=save.best||'—'; $('tShards').textContent=save.shards; }
+function refreshTitle(){ $('tBest').textContent=save.bestDepth||'—'; $('tShards').textContent=save.shards; }
 
 function beginSolo(){
   saveName(); resetNet(); role='solo'; myId=0;
   show(null); $('hud').classList.remove('hidden');
-  newSim([{id:0,name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls}]);
+  // Descent replaces Survival progression: every solo run is a dungeon run
+  newRunSim([{id:0,name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls}]);
   const me=S.players.get(0);
-  myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
+  myPos={x:me.x,y:me.y,inv:me.inv,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
   V=null; mode='play'; musicStart();
+  toast('▼ FLOOR 1 — '+DGN.floors[0].name);
 }
 
 function renderShop(){
@@ -357,7 +359,7 @@ function renderBoard(){
   if(!recs.length){el.innerHTML='<div class="statline">No descents recorded yet.</div>';return;}
   recs.forEach((r,i)=>{const d=document.createElement('div');d.className='lbrow';
     d.innerHTML=`<span class="rk">${i+1}</span><span class="nm">${(r.n||'?').replace(/</g,'&lt;')}</span>`+
-      `<span class="cyanc">w${r.w}</span><span class="sc">${r.s}</span>`;
+      `<span class="cyanc">${r.d!==undefined?((r.v?'✦ ':'')+'D'+r.d):('w'+r.w)}</span><span class="sc">${r.s}</span>`;
     el.appendChild(d);});
 }
 /* class chips: locked classes purchasable with banked shards;
@@ -425,7 +427,7 @@ function renderModeChips(){
   $('lobbyModeBits').classList.toggle('hidden',!host);
   if(!host)return;
   const el=$('modeRow'); el.innerHTML='';
-  [['coop','CO-OP'],['siege','NEXUS SIEGE']].forEach(([k,label])=>{
+  [['coop','DESCENT'],['siege','NEXUS SIEGE']].forEach(([k,label])=>{
     const b=document.createElement('button');
     b.className='chip'+(lobbyMode===k?' sel':'');
     b.textContent=label;
@@ -513,14 +515,16 @@ function initUI(){
   $('btnMpStart').onclick=()=>{
     role='host';
     show(null); $('hud').classList.remove('hidden');
-    if(lobbyMode==='siege')newMobaSim(lobby.players); else newSim(lobby.players);
+    // co-op is a Descent run; the siege keeps its own lane sim
+    if(lobbyMode==='siege')newMobaSim(lobby.players); else newRunSim(lobby.players);
     const me=S.players.get(myId);
-    // siege players start at their base; newMobaSim already placed them
+    // siege players start at their base, Descent at the start room; both sims placed them
     myPos={x:me.x||WW/2,y:me.y||WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
     bcastRoster();
-    // each client needs its OWN team back, so send begin per-connection
-    for(const c of conns){ const pi=lobby.players.find(p=>p.id===c._pid);
-      try{c.send({t:'begin',obstacles,ww:WW,wh:WH,diff:diffKey,mode:lobbyMode,team:pi?(pi.team||0):0})}catch(e){} }
+    // each client needs its OWN team (and its own entry spot) back, so send begin per-connection
+    for(const c of conns){ const pi=lobby.players.find(p=>p.id===c._pid), cp=S.players.get(c._pid);
+      try{c.send({t:'begin',obstacles,ww:WW,wh:WH,diff:diffKey,mode:lobbyMode,team:pi?(pi.team||0):0,
+        dg:dgNetInfo(),x:cp?Math.round(cp.x):undefined,y:cp?Math.round(cp.y):undefined})}catch(e){} }
     mode='play'; musicStart();
   };
   $('btnEditor').onclick=()=>{edInit();show('scrEditor');};
@@ -538,10 +542,12 @@ function initUI(){
     conns=conns.filter(c=>c.open);
     lobby.players=lobby.players.filter(p=>p.id===myId||conns.some(c=>c._pid===p.id));
     if(role==='host'&&conns.length){
-      newSim(lobby.players);
+      newRunSim(lobby.players);
       const me=S.players.get(myId);
-      myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
-      bcast({t:'rs',obstacles,ww:WW,wh:WH,diff:diffKey});
+      myPos={x:me.x,y:me.y,inv:me.inv,dashT:0,dashing:0,spd:me.st.spd,dcd:me.st.dashCd,dead:false};
+      for(const c of conns){ const cp=S.players.get(c._pid);
+        try{c.send({t:'rs',obstacles,ww:WW,wh:WH,diff:diffKey,dg:dgNetInfo(),
+          x:cp?Math.round(cp.x):undefined,y:cp?Math.round(cp.y):undefined})}catch(e){} }
       mode='play';musicStart();$('hud').classList.remove('hidden');
     }else beginSolo();
   };

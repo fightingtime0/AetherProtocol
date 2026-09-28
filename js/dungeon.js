@@ -281,3 +281,375 @@ function dgTestRoom(){
   tm.test=1;
   return dgInstall(tm);
 }
+
+/* ============================================================
+   RUN LOOP (host only below, unless noted)
+   S.dg = {runSeed, seed, floor, room, locked, depth, ...}. S.wave stays the
+   scaling input every existing curve reads; Descent just drives it from
+   depth instead of a wave counter.
+   ============================================================ */
+const DG_FIGHT={combat:1,elite:1,boss:1};
+function dgFloorSeed(runSeed,floor){ return (Math.imul((runSeed^0x5bd1e995)>>>0,2654435761)+Math.imul(floor+1,40503))>>>0; }
+function dgWaveFor(depth){ return Math.max(1,Math.round(depth*DGN.depthWaveMult)); }
+function dgAlive(){ return [...S.players.values()].filter(p=>!p.dead); }
+/* Start a Descent run. Replaces Survival progression for solo, co-op and
+   "play again"; Battleground keeps newSim(). */
+function newRunSim(playersInfo,opts){
+  opts=opts||{};
+  S=baseSim({});
+  S.waveDone=true; S.miniSpawned=true;          // no open-field waves or guardian timer
+  S.shops=[];
+  const runSeed=(opts.seed!==undefined?opts.seed:Math.floor(Math.random()*2147483646)+1)>>>0;
+  S.dg={runSeed,seed:0,floor:0,room:-1,locked:false,depth:0,tele:0,enc:null,flow:null,flowT:0,
+        hatch:null,victoryT:0,disc:new Set()};
+  playersInfo.forEach(pi=>{
+    const p=mkPlayer(pi.id,pi.name,pi.sprites||pi.sprite,pi.cls);
+    applyMetaObj(p, pi.id===myId?save.meta:pi.meta);
+    S.players.set(pi.id,p);
+  });
+  dgEnterFloor(0);
+  S.wave=dgWaveFor(0);
+  return S;
+}
+/* Spot i of the start room's entry fan (so co-op players don't stack). */
+function dgEntrySpot(i){
+  const st=TM.rooms[TM.start||0], e=st.entry[0]||[st.x+st.w/2,st.y+st.h/2];
+  if(!i)return [e[0],e[1]];
+  const a=i*2.4; return [e[0]+Math.cos(a)*14,e[1]+Math.sin(a)*14];
+}
+/* Build floor f, wipe everything floor-local, and stand the party at the
+   start room's entry. Remote players are told where by the caller. */
+function dgEnterFloor(f){
+  const D=S.dg;
+  D.floor=f; D.seed=dgFloorSeed(D.runSeed,f);
+  dgBuild(D.seed,f);
+  D.room=-1; D.locked=false; D.tele=0; D.enc=null; D.flow=null; D.hatch=null; D.disc=new Set([TM.start]);
+  S.en=[]; S.eb=[]; S.pb=[]; S.it=[]; S.zn=[]; S.mk=[]; S.pu=[]; S.ar=[]; S.spawnQ=[]; S.obj=null; S.shops=[];
+  TM.rooms[TM.start].state='cleared';
+  let i=0;
+  for(const p of S.players.values()){
+    const [x,y]=dgEntrySpot(i++);
+    p.x=x; p.y=y; p.inv=Math.max(p.inv,DGN.floorInvulnSec||1);
+    p.dgIgnoreInUntil=now()+900;              // stale 'in' packets still carry the old floor
+    if(p.id===myId){ myPos.x=x; myPos.y=y; myPos.inv=Math.max(myPos.inv||0,DGN.floorInvulnSec||1); }
+  }
+  for(const dn of S.dr){ const o=S.players.get(dn.owner); if(o){dn.x=o.x; dn.y=o.y;} }
+}
+/* Door tiles are the lock. Idempotent, runs on host and clients alike. */
+function dgSetLock(i,locked){
+  if(!TM||i<0)return;
+  if(locked)TM.locked=i; else if(TM.locked===i)TM.locked=-1;
+  for(const d of TM.doors){
+    if(d.rooms[0]!==i&&d.rooms[1]!==i)continue;
+    const v=locked?T_DOORX:T_DOOR;
+    for(const t of d.tiles)TM.t[t]=v;
+  }
+}
+/* Client side: make the doors match what the host says, however many
+   messages were missed — only ever one room is locked at a time. */
+function dgSyncLock(room,locked){
+  if(!TM)return;
+  if(locked&&room>=0){ if(TM.locked!==room){ if(TM.locked>=0)dgSetLock(TM.locked,false); dgSetLock(room,true); } }
+  else if(TM.locked>=0)dgSetLock(TM.locked,false);
+}
+/* A random walkable spot inside room ri, at least `margin` px from its walls
+   and clear of prop circles. Runtime only (uses rnd), never generation. */
+function dgRoomFloorPoint(ri,margin){
+  const rm=TM.rooms[ri]; margin=margin||8;
+  for(let t=0;t<80;t++){
+    const x=rnd(rm.x+TM.ts+margin,rm.x+rm.w-TM.ts-margin), y=rnd(rm.y+TM.ts+margin,rm.y+rm.h-TM.ts-margin);
+    const v=tileAt(x,y);
+    if(v!==T_FLOOR&&v!==T_HAZ)continue;
+    if(obstacles.some(o=>Math.hypot(o.x-x,o.y-y)<o.r+6))continue;
+    return [x,y];
+  }
+  const s=rm.spawns[0]||rm.entry[0]||[rm.x+rm.w/2,rm.y+rm.h/2]; return [s[0],s[1]];
+}
+/* Where a Descent enemy appears: one of the locked room's S markers that is
+   ≥ spawnMinDist from every living player, else any floor tile in the room
+   that is, else anywhere in the room. null outside a fight. */
+function dgSpawnPoint(){
+  const D=S&&S.dg; if(!D||D.room<0||!TM)return null;
+  const rm=TM.rooms[D.room], alive=dgAlive(), md=DGN.spawnMinDist||96;
+  const ok=pt=>alive.every(p=>Math.hypot(p.x-pt[0],p.y-pt[1])>=md);
+  const marks=rm.spawns.filter(ok);
+  if(marks.length){ const m=marks[irnd(0,marks.length)]; return [m[0]+rnd(-5,5),m[1]+rnd(-5,5)]; }
+  for(let t=0;t<30;t++){ const pt=dgRoomFloorPoint(D.room,10); if(ok(pt))return pt; }
+  return dgRoomFloorPoint(D.room,10);
+}
+function dgPlaceSpawn(e){
+  const pt=dgSpawnPoint(); if(!pt)return;
+  e.x=pt[0]; e.y=pt[1];
+  for(let i=0;i<8;i++){ const a=i/8*TAU; S.fx.push({x:e.x+Math.cos(a)*6,y:e.y+Math.sin(a)*6,
+    vx:-Math.cos(a)*20,vy:-Math.sin(a)*20,l:.3,ci:'#b34fff'}); }
+}
+
+/* ---------------- flow field (active room only) ----------------
+   Multi-source BFS over the locked room's rect + 1 tile, from every living
+   player's tile inside it; 8-neighbour without corner cutting; walk-solid
+   tiles blocked. Recomputed every flowRecalcSec. */
+function dgFlowBuild(ri){
+  const rm=TM.rooms[ri];
+  const x0=Math.max(0,rm.tx-1), y0=Math.max(0,rm.ty-1);
+  const w=Math.min(TM.w,rm.tx+rm.tw+1)-x0, h=Math.min(TM.h,rm.ty+rm.th+1)-y0;
+  const dist=new Int16Array(w*h).fill(-1), q=new Int32Array(w*h);
+  let qh=0, qt=0;
+  for(const p of S.players.values()){ if(p.dead)continue;
+    const tx=Math.floor(p.x/TM.ts)-x0, ty=Math.floor(p.y/TM.ts)-y0;
+    if(tx<0||ty<0||tx>=w||ty>=h)continue;
+    const k=ty*w+tx; if(dist[k]===0)continue;
+    dist[k]=0; q[qt++]=k; }
+  const open=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&!walkSolid(TM.t[(y+y0)*TM.w+x+x0]);
+  while(qh<qt){
+    const k=q[qh++], x=k%w, y=(k/w)|0, nd=dist[k]+1;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if(!dx&&!dy)continue;
+      const nx=x+dx, ny=y+dy;
+      if(!open(nx,ny))continue;
+      if(dx&&dy&&(!open(x+dx,y)||!open(x,y+dy)))continue;   // no corner cutting
+      const nk=ny*w+nx; if(dist[nk]>=0)continue;
+      dist[nk]=nd; q[qt++]=nk;
+    }
+  }
+  return {x0,y0,w,h,dist,room:ri};
+}
+/* Unit vector for an enemy chasing `t`: straight at it with a clear walking
+   line, otherwise toward the lowest-distance neighbour tile. */
+function dgSteer(e,t){
+  const dx=t.x-e.x, dy=t.y-e.y, d=Math.hypot(dx,dy)||1;
+  const F=S&&S.dg&&S.dg.flow;
+  if(!F||losClear(e.x,e.y,t.x,t.y,true))return {x:dx/d,y:dy/d};
+  const ts=TM.ts, tx=Math.floor(e.x/ts)-F.x0, ty=Math.floor(e.y/ts)-F.y0;
+  if(tx<0||ty<0||tx>=F.w||ty>=F.h)return {x:dx/d,y:dy/d};
+  let best=-1,bx=0,by=0;
+  const at=(x,y)=>(x<0||y<0||x>=F.w||y>=F.h)?-1:F.dist[y*F.w+x];
+  for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++){
+    if(!ox&&!oy)continue;
+    const nd=at(tx+ox,ty+oy); if(nd<0)continue;
+    if(ox&&oy&&(at(tx+ox,ty)<0||at(tx,ty+oy)<0))continue;
+    if(best<0||nd<best){best=nd;bx=tx+ox;by=ty+oy;}
+  }
+  if(best<0)return {x:dx/d,y:dy/d};
+  const cx=(F.x0+bx+.5)*ts-e.x, cy=(F.y0+by+.5)*ts-e.y, cd=Math.hypot(cx,cy)||1;
+  return {x:cx/cd,y:cy/cd};
+}
+
+/* ---------------- room state machine ----------------
+   idle → active (locked) → cleared. start/treasure/shop clear on entry. */
+function dgTick(dt){
+  const D=S.dg; if(!D||!TM)return;
+  // hazard grates burn players (enemies are immune)
+  const hz=DGN.hazardDps||6;
+  for(const p of S.players.values())
+    if(!p.dead&&tileAt(p.x,p.y)===T_HAZ)hurt(p,hz*dt,undefined,true);
+  if(D.victoryT>0){ D.victoryT-=dt; if(D.victoryT<=0&&!S.over)runOver({victory:true}); return; }
+  // discovery (for the minimap): the room each player stands in, plus its neighbours
+  for(const p of S.players.values()){ if(p.dead)continue;
+    const ri=dgRoomAt(p.x,p.y); if(ri<0||D.disc.has(ri))continue;
+    D.disc.add(ri); }
+  if(D.room<0){
+    const inset=DGN.triggerInset||24;
+    for(const p of S.players.values()){ if(p.dead)continue;
+      const ri=dgRoomAt(p.x,p.y,inset); if(ri<0)continue;
+      const rm=TM.rooms[ri]; if(rm.state!=='idle')continue;
+      if(DG_FIGHT[rm.type]){ dgActivate(ri,p); break; }
+      dgEnterSafeRoom(ri);
+    }
+  }else dgFight(dt);
+  if(D.hatch)dgHatchTick(dt);
+  if(S.shops&&S.shops.length)dgShopTick(dt);
+}
+function dgEnterSafeRoom(ri){
+  const rm=TM.rooms[ri]; rm.state='cleared';
+  if(rm.type==='treasure')dgTreasure(rm);
+  else if(rm.type==='shop')dgShopOpen(rm);
+}
+function dgActivate(ri,trig){
+  const D=S.dg, rm=TM.rooms[ri];
+  rm.state='active'; D.room=ri; D.locked=true; D.tele=DGN.telegraphSec||0.8; D.enc=null;
+  dgSetLock(ri,true);
+  // pull every other player (living or dead) that is outside the room in
+  // next to whoever tripped it — Enter the Gungeon style
+  const pad=DGN.pullInPad||12;
+  for(const p of S.players.values()){
+    if(p===trig)continue;
+    if(dgRoomAt(p.x,p.y,TM.ts)===ri)continue;
+    const spot={x:trig.x+rnd(-pad,pad),y:trig.y+rnd(-pad,pad),r:p.r||3};
+    collideTiles(spot);
+    if(dgRoomAt(spot.x,spot.y,TM.ts)!==ri){ spot.x=trig.x; spot.y=trig.y; }
+    dgTeleport(p,spot.x,spot.y);
+  }
+  // the room wakes up: destructible props appear, portals open on every spawn
+  for(const b of rm.breakables){
+    const T=ET[ETI[b.kind]]; if(!T)continue;
+    const e=mkE(b.kind); e.x=b.x; e.y=b.y; e.hp=e.maxhp=T.hp; e.prop=true; e.spd=0;
+    S.en.push(e);
+  }
+  D.flow=dgFlowBuild(ri); D.flowT=0;
+  sfxE('wave');
+}
+/* Move a player: the host's own through myPos, a remote one with 'tp'. */
+function dgTeleport(p,x,y){
+  p.x=x; p.y=y;
+  if(p.id===myId){ myPos.x=x; myPos.y=y; }
+  else{ p.dgTpT=now(); sendTo(p.id,{t:'tp',x:Math.round(x),y:Math.round(y)}); }
+}
+function dgStartEncounter(rm){
+  const D=S.dg, w=S.wave;
+  S.waveT=0; S.spawnQ=[]; S.spawnT=0;
+  let q;
+  if(rm.type==='boss'){
+    const spec=DGN.floors[D.floor].boss;
+    const kind=spec==='titan'?'titan':spec==='big'?'big':'boss';
+    q=buildWaveQueue(w,{kind,interlude:false});
+    D.enc={waves:0,first:q.length};
+  }else if(rm.type==='elite'){
+    const G=(DGN.eliteGuardians||['brute']).filter(k=>ETI[k]!==undefined);
+    const g=mkE(G[irnd(0,G.length)]);
+    q=[g,...buildWaveQueue(w,{kind:'horde',budgetMult:DGN.eliteEscortMult||0.6,interlude:false})];
+    toastAll('⚠ A guardian stirs…'); sfxE('boss');
+    D.enc={waves:0,first:q.length};
+  }else{
+    const mult=(DGN.roomBudgetMult||{})[rm.fp]||1;
+    q=buildWaveQueue(w,{kind:'horde',budgetMult:mult,interlude:false});
+    D.enc={waves:((DGN.wavesPerRoom||{})[rm.fp]||1)-1,first:q.length,mult};
+    rollObjective(w);
+  }
+  S.spawnQ.push(...q);
+}
+function dgFight(dt){
+  const D=S.dg, rm=TM.rooms[D.room];
+  // flow field refresh
+  D.flowT+=dt;
+  if(D.flowT>=(DGN.flowRecalcSec||0.25)){ D.flowT=0; D.flow=dgFlowBuild(D.room); }
+  // anything that blinked/charged out of the sealed room is put back in
+  for(const e of S.en){ if(e.prop||e.hp<=0)continue;
+    if(dgRoomAt(e.x,e.y)!==D.room)dgContain(e,rm); }
+  if(D.tele>0){
+    D.tele-=dt;
+    if(Math.random()<dt*30)for(const s of rm.spawns){
+      const a=rnd(0,TAU); S.fx.push({x:s[0]+Math.cos(a)*7,y:s[1]+Math.sin(a)*7,vx:-Math.cos(a)*18,vy:-Math.sin(a)*18,l:.35,ci:'#b34fff'}); }
+    if(D.tele<=0)dgStartEncounter(rm);
+    return;
+  }
+  const alive=S.en.filter(e=>!e.opt&&e.hp>0).length;
+  // second wave once the first is mostly down
+  if(D.enc&&D.enc.waves>0&&!S.spawnQ.length&&alive<=Math.floor((DGN.secondWaveAt||0.2)*D.enc.first)){
+    D.enc.waves--;
+    const q=buildWaveQueue(S.wave,{kind:'horde',budgetMult:D.enc.mult||1,interlude:false});
+    D.enc.first=q.length; S.spawnQ.push(...q); sfxE('wave');
+    return;
+  }
+  if(D.enc&&D.enc.waves<=0&&!S.spawnQ.length&&!alive)dgClear(rm);
+}
+function dgClear(rm){
+  const D=S.dg;
+  rm.state='cleared';
+  D.locked=false; dgSetLock(rm.i,false); D.room=-1; D.flow=null; D.enc=null;
+  S.eb.length=0;
+  S.score+=S.wave*BAL.economy.waveClearScore;
+  if(S.obj&&!S.obj.done){
+    if(S.obj.ty==='speed')objDone(S.waveT<=S.obj.goal?1:-1);
+    else if(S.obj.ty==='notouch')objDone(1);
+    else objDone(-1);
+  }
+  reviveDead();
+  // depth first, so a slot unlocked by this clear is already offered by its pick
+  D.depth++;
+  S.wave=dgWaveFor(D.depth);
+  const lastFloor=D.floor>=DGN.floors.length-1;
+  if(rm.type==='boss'){
+    const B=DGN.bossDrops||{}, c=rm.hatch[0]||[rm.x+rm.w/2,rm.y+rm.h/2];
+    for(let i=0;i<(B.chests||2);i++)S.it.push({k:2,x:c[0]+(i-.5)*26,y:c[1]+34});
+    let i=0;
+    for(const p of S.players.values()){
+      for(let k=0;k<(B.heartsPerPlayer||1);k++)S.it.push({k:0,x:c[0]-40+(i++)*12,y:c[1]+52,v:B.heartValue||25});
+      if(!p.dead){ p.hp=p.maxhp; p.shield=p.shieldMax||0; }
+    }
+    if(lastFloor){ D.victoryT=DGN.victoryDelaySec||2; toastAll('✦ THE CORE IS SILENT — DESCENT COMPLETE ✦'); sfxE('objwin'); return; }
+    D.hatch={x:c[0],y:c[1],hold:0,shown:-1};
+    toastAll('▼ The exit hatch opens — gather on it to descend');
+  }
+  for(const p of S.players.values())if(!p.dead)startPick(p);
+  sfxE('objwin');
+}
+function dgHatchTick(dt){
+  const D=S.dg, H=D.hatch, R=DGN.hatchRadius||40, need=DGN.hatchHoldSec||2;
+  const alive=dgAlive();
+  const all=alive.length>0&&alive.every(p=>Math.hypot(p.x-H.x,p.y-H.y)<=R);
+  if(!all){ if(H.hold>0)H.hold=0; H.shown=-1; return; }
+  H.hold+=dt;
+  const left=Math.ceil(need-H.hold);
+  if(left!==H.shown&&left>0){ H.shown=left; toastAll('▼ Descending in '+left+'…'); }
+  if(H.hold>=need)dgNextFloor();
+}
+function dgNextFloor(){
+  const D=S.dg, f=D.floor+1;
+  dgEnterFloor(f);
+  for(const p of S.players.values())
+    if(p.id!==myId)sendTo(p.id,{t:'fl',seed:D.seed,floor:f,x:Math.round(p.x),y:Math.round(p.y)});
+  toastAll('▼ FLOOR '+(f+1)+' — '+DGN.floors[f].name);
+  sfxE('boss');
+}
+
+/* ---------------- props ---------------- */
+function dgPropDeath(e,owner){
+  if(e.k==='crate'){
+    const C=DGN.crate||{};
+    if(Math.random()<(C.shardChance||0.35)){ const v=C.shardValue||[4,10];
+      S.it.push({k:1,x:e.x+rnd(-3,3),y:e.y+rnd(-3,3),v:irnd(v[0],v[1]+1)}); }
+    if(Math.random()<(C.heartChance||0.1))S.it.push({k:0,x:e.x+rnd(-3,3),y:e.y+rnd(-3,3),v:C.heartValue||25});
+    for(let i=0;i<8;i++)S.fx.push({x:e.x,y:e.y,vx:rnd(-40,40),vy:rnd(-40,40),l:.35,ci:'#ffd35c'});
+  }else if(e.k==='barrel'){
+    const B=DGN.barrel||{}, r=B.radius||70, dmg=B.damage||60;
+    for(let i=0;i<22;i++){ const a=rnd(0,TAU), sp=rnd(40,140);
+      S.fx.push({x:e.x,y:e.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,l:.45,ci:i%3?'#ff9d3c':'#ff5c47'}); }
+    S.shake=Math.max(S.shake,.25); sfxE('boom',e.x,e.y);
+    // enemies AND players, and it chains into other barrels (deadDone stops loops)
+    for(const o of S.en) if(o!==e&&o.hp>0&&Math.hypot(o.x-e.x,o.y-e.y)<r+o.r) damageE(o,dmg,owner);
+    for(const p of S.players.values()) if(!p.dead&&Math.hypot(p.x-e.x,p.y-e.y)<r+p.r) hurt(p,dmg);
+  }
+}
+
+/* ---------------- treasure & shop rooms ---------------- */
+function dgTreasure(rm){
+  const n=rm.chests.length||1, extra=Math.max(0,S.players.size-1);
+  for(let i=0;i<n;i++){ const c=rm.chests[i]||[rm.x+rm.w/2,rm.y+rm.h/2]; S.it.push({k:2,x:c[0],y:c[1]}); }
+  const c0=rm.chests[0]||[rm.x+rm.w/2,rm.y+rm.h/2];
+  for(let i=0;i<extra;i++)S.it.push({k:2,x:c0[0]+(i+1)*14,y:c0[1]+10});
+  sfxE('chest');
+}
+const DG_SHOP_KINDS=['mend','cache','refine'];
+function dgShopOpen(rm){
+  const f=Math.min(S.dg.floor,2), SH=DGN.shop||{};
+  rm.shop.forEach((s,i)=>{
+    const k=DG_SHOP_KINDS[i%DG_SHOP_KINDS.length], spec=SH[k]||{};
+    const cost=Array.isArray(spec.cost)?spec.cost[Math.min(f,spec.cost.length-1)]:(spec.cost||50);
+    S.shops.push({k,team:-1,cd:0,x:s[0],y:s[1],cost,used:[]});
+  });
+}
+/* Stand on a pad with enough shards to buy. Single use per player. */
+function dgShopTick(dt){
+  const SH=DGN.shop||{}, R=SH.radius||20;
+  for(const sh of S.shops){
+    if(DG_SHOP_KINDS.indexOf(sh.k)<0)continue;
+    for(const p of S.players.values()){
+      if(p.dead||sh.used.includes(p.id))continue;
+      if(Math.hypot(p.x-sh.x,p.y-sh.y)>R){ if(p.dgShopWarn===sh)p.dgShopWarn=null; continue; }
+      if(p.shards<sh.cost){
+        if(p.dgShopWarn!==sh){ p.dgShopWarn=sh; const m='Need ◆'+sh.cost;
+          if(p.id===myId)toast(m); else sendTo(p.id,{t:'ts',m}); sfxE('denied'); }
+        continue;
+      }
+      p.shards-=sh.cost; sh.used.push(p.id); sfxE('buy');
+      if(sh.k==='mend'){ p.hp=Math.min(p.maxhp,p.hp+p.maxhp*((SH.mend&&SH.mend.heal)||0.4)); toastAll(p.name+' mended'); }
+      else if(sh.k==='cache'){ S.it.push({k:2,x:sh.x,y:sh.y+18}); toastAll(p.name+' bought a cache'); }
+      else if(sh.k==='refine'){ if(!p.pickOpts)startPick(p); toastAll(p.name+' refined their build'); }
+    }
+  }
+}
+
+/* ---------------- networking helpers (host + client) ---------------- */
+/* What a client needs to rebuild the current floor: {seed, floor}, or null
+   outside a Descent run (the client then clears any stale tilemap). */
+function dgNetInfo(){ return (S&&S.dg)?{seed:S.dg.seed,floor:S.dg.floor}:null; }

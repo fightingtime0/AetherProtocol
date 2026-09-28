@@ -81,14 +81,12 @@ function respawnPersistent(p){
   np.inv=(BAL.battleground&&BAL.battleground.respawnInvuln)||10;
   S.players.set(p.id,np);
 }
-function newSim(playersInfo,opts){
-  TM=null;                 // open-field modes never carry a Descent tilemap
-  obstacles=genWorld();
-  // Training "Dungeon room" toggle: one hand-authored room instead of the
-  // open field, for checking tile collision by hand (see dgTestRoom)
-  if(opts&&opts.dgRoom&&typeof dgTestRoom==='function')dgTestRoom();
+/* The blank host state every PvE-style run starts from. newSim() (Battleground,
+   Training) and newRunSim() (Descent, dungeon.js) both build on it, so a field
+   added here reaches every mode. */
+function baseSim(opts){
   eidc=1; bidc=1;
-  S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],pu:[],dnQ:[],obj:null,sx:[],
+  return {players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],pu:[],dnQ:[],obj:null,sx:[],
      wave:0,score:0,t:0,waveT:0,
      spawnQ:[],spawnT:0,waveDone:false,miniSpawned:false,over:false,shake:0,
      // Battleground mode only: pvp = player bullets can hurt other players;
@@ -96,6 +94,14 @@ function newSim(playersInfo,opts){
      // ending the run — see hurt() and respawnPersistent().
      pvp:!!(opts&&opts.pvp), persistent:!!(opts&&opts.persistent),
      training:!!(opts&&opts.training)};
+}
+function newSim(playersInfo,opts){
+  TM=null;                 // open-field modes never carry a Descent tilemap
+  obstacles=genWorld();
+  // Training "Dungeon room" toggle: one hand-authored room instead of the
+  // open field, for checking tile collision by hand (see dgTestRoom)
+  if(opts&&opts.dgRoom&&typeof dgTestRoom==='function')dgTestRoom();
+  S=baseSim(opts);
   playersInfo.forEach(pi=>{
     const p=mkPlayer(pi.id,pi.name,pi.sprites||pi.sprite,pi.cls);
     applyMetaObj(p, pi.id===myId?save.meta:pi.meta);
@@ -182,39 +188,67 @@ function nextWave(){
     if(S.wave>cap)S.wave=cap; }
   S.waveDone=false; S.waveT=0; S.miniSpawned=false;
   S.spawnQ=[]; S.spawnT=0;
-  const w=S.wave, np=S.players.size, D=DIFF(), WV=BAL.waves;
+  const w=S.wave;
   // revive dead players (Battleground/persistent handles its own respawn timer instead)
-  if(!S.persistent)
-    for(const p of S.players.values()) if(p.dead){ p.dead=false; p.hp=p.maxhp*BAL.player.reviveHpFrac; p.inv=2;
-      const alive=[...S.players.values()].find(q=>!q.dead&&q!==p);
-      if(alive){p.x=alive.x+rnd(-20,20);p.y=alive.y+rnd(-20,20);} }
+  reviveDead();
   sfxE('wave');
-  if(D.titanEvery&&w%D.titanEvery===0&&ETI.titan!==undefined){
+  S.spawnQ.push(...buildWaveQueue(w));
+  scatterItems(irnd(1,3));
+  rollObjective(w);
+}
+/* Down players come back beside a living ally. Shared by the open-field wave
+   loop (nextWave) and Descent room clears (dungeon.js). */
+function reviveDead(){
+  if(S.persistent)return;
+  for(const p of S.players.values()) if(p.dead){ p.dead=false; p.hp=p.maxhp*BAL.player.reviveHpFrac; p.inv=2;
+    const alive=[...S.players.values()].find(q=>!q.dead&&q!==p);
+    if(alive){p.x=alive.x+rnd(-20,20);p.y=alive.y+rnd(-20,20);}
+    if(p.id===myId){ myPos.x=p.x; myPos.y=p.y; myPos.dead=false; } }
+}
+/* Wave composition, returned as a list of (not yet spawned) enemies.
+   With no opts it picks exactly what nextWave always did for wave w:
+   titan on titanEvery, boss (BIG on bigBossEvery) on bossEvery, otherwise a
+   budgeted horde from the enemies.json pools, plus the interlude obelisk.
+   Descent rooms (dungeon.js) force the kind instead:
+     opts.kind        'horde' | 'boss' | 'big' | 'titan'
+     opts.budgetMult  scales a horde's budget (room footprint, elite escort)
+     opts.interlude   false skips the obelisk                              */
+function buildWaveQueue(w,opts){
+  opts=opts||{};
+  const q=[], np=S.players.size, D=DIFF(), WV=BAL.waves;
+  let kind=opts.kind;
+  if(!kind){
+    if(D.titanEvery&&w%D.titanEvery===0&&ETI.titan!==undefined)kind='titan';
+    else if(w%WV.bossEvery===0)kind=(D.bigBossEvery&&w%D.bigBossEvery===0)?'big':'boss';
+    else kind='horde';
+  }
+  if(kind==='titan'&&ETI.titan===undefined)kind='big';
+  if(kind==='titan'){
     const t=mkBoss('titan',w,np);
-    S.spawnQ.push(t);
-    for(let i=0;i<4+np;i++) S.spawnQ.push(mkE('wisp'));
+    q.push(t);
+    for(let i=0;i<4+np;i++) q.push(mkE('wisp'));
     toastAll('⚠⚠ THE TITAN AWAKENS ⚠⚠'); sfxE('boss');
-  }else if(w%WV.bossEvery===0){
-    const bk=bossKeyFor(w);
+  }else if(kind==='boss'||kind==='big'){
+    const bk=opts.bossKey||bossKeyFor(w);
     const b=mkBoss(bk,w,np);
-    if(D.bigBossEvery&&w%D.bigBossEvery===0){ // BIG boss variant
+    if(kind==='big'){ // BIG boss variant
       b.hp*=2.2; b.maxhp*=2.2; b.scl=2; b.r*=1.8; b.spd*=.85;
       toastAll('⚠ A BIG BOSS descends!');
     }
-    S.spawnQ.push(b); sfxE('boss');
+    q.push(b); sfxE('boss');
     const partsSpec=ET[ETI[bk]].parts; // multi-part boss: spawn its linked parts alongside it
     if(partsSpec)partsSpec.forEach((pid,idx)=>{
       const pt=mkE(pid); pt.core=b.id; pt.orbIdx=idx; pt.x=b.x; pt.y=b.y; pt.ph=idx*Math.PI;
       // scale like a boss (not a generic mob) so parts stay proportional to their
       // core at every wave instead of out-scaling it via the steeper mob curve
       pt.hp=pt.maxhp=ET[ETI[pid]].hp*(1+w*WV.bossHpPerWave)*(0.6+np*0.4)*D.enemyHp;
-      S.spawnQ.push(pt);
+      q.push(pt);
     });
     const mn=BOSS_MINION[bk];
-    if(mn) for(let i=0;i<2+np;i++) S.spawnQ.push(mkE(mn)); // boss escort
-    for(let i=0;i<Math.min(6,Math.floor(w/WV.bossEvery)*2+np);i++) S.spawnQ.push(mkE('imp'));
+    if(mn) for(let i=0;i<2+np;i++) q.push(mkE(mn)); // boss escort
+    for(let i=0;i<Math.min(6,Math.floor(w/WV.bossEvery)*2+np);i++) q.push(mkE('imp'));
   }else{
-    let budget=Math.floor((WV.budgetBase+w*WV.budgetPerWave)*(WV.playerBase+np*WV.playerFactor)*D.budget);
+    let budget=Math.floor((WV.budgetBase+w*WV.budgetPerWave)*(WV.playerBase+np*WV.playerFactor)*D.budget*(opts.budgetMult||1));
     // weighted pool straight from enemies.json "pool" specs
     const pool=[];
     for(const T of ET){ if(!T.pool||w<T.pool.minWave)continue;
@@ -227,17 +261,16 @@ function nextWave(){
     while(budget>0&&pool.length){
       const t=pool[irnd(0,pool.length)];
       const cost=costOf(t);
-      if(cost>budget&&budget<3){S.spawnQ.push(mkE(cheap));budget-=costOf(cheap);continue;}
-      S.spawnQ.push(mkE(t)); budget-=cost;
+      if(cost>budget&&budget<3){q.push(mkE(cheap));budget-=costOf(cheap);continue;}
+      q.push(mkE(t)); budget-=cost;
     }
   }
   // interlude enemies (e.g. obelisk) every few waves
-  if(w%WV.interludeEvery===0&&w>1){
+  if(opts.interlude!==false&&w%WV.interludeEvery===0&&w>1){
     const inter=ET.filter(T=>T.interlude);
-    if(inter.length)S.spawnQ.push(mkE(inter[irnd(0,inter.length)].id));
+    if(inter.length)q.push(mkE(inter[irnd(0,inter.length)].id));
   }
-  scatterItems(irnd(1,3));
-  rollObjective(w);
+  return q;
 }
 
 /* ---------------- random side objectives ---------------- */
@@ -266,8 +299,9 @@ function rollObjective(w){
   if(ty==='slay'){o.goal=OB.slay.goalBase+Math.floor(w*OB.slay.goalPerWave);o.tLeft=OB.slay.time;}
   else if(ty==='notouch'){o.tLeft=OB.notouch.time;}
   else if(ty==='zone'){o.goal=OB.zone.holdSeconds;o.tLeft=OB.zone.time;o.zr=OB.zone.radius;
-    let t2=0;do{o.zx=rnd(80,WW-80);o.zy=rnd(80,WH-80);}
-    while(t2++<20&&obstacles.some(ob2=>Math.hypot(ob2.x-o.zx,ob2.y-o.zy)<ob2.r+20));}
+    if(S.dg){ const pt=dgRoomFloorPoint(S.dg.room,o.zr); o.zx=pt[0]; o.zy=pt[1]; } // Descent: inside the locked room
+    else{ let t2=0;do{o.zx=rnd(80,WW-80);o.zy=rnd(80,WH-80);}
+    while(t2++<20&&obstacles.some(ob2=>Math.hypot(ob2.x-o.zx,ob2.y-o.zy)<ob2.r+20)); }}
   else if(ty==='speed'){o.goal=OB.speed.clearSeconds;o.tLeft=OB.speed.clearSeconds;}
   else{o.goal=OB.greed.goalBase+OB.greed.goalPerWave*w;o.tLeft=OB.greed.time;}
   S.obj=o;
@@ -310,7 +344,7 @@ function onDodge(p){
     const def=WPN[w.id]; if(!def||!def.dodge)continue;
     // generic reactions shared by most weapons; the bespoke ones follow
     const foeNear=(rad)=>{ let best=null,bd=(rad||400)**2;
-      for(const e of S.en){ if(e.hp<=0||!hostile(p.team,e.team))continue;
+      for(const e of S.en){ if(e.hp<=0||e.prop||!hostile(p.team,e.team))continue;
         const d=(e.x-p.x)**2+(e.y-p.y)**2; if(d<bd){bd=d;best=e;} }
       for(const q of foePlayers(p)){
         const d=(q.x-p.x)**2+(q.y-p.y)**2; if(d<bd){bd=d;best=q;} }
@@ -384,7 +418,7 @@ function onDodge(p){
       for(const b of S.pb){
         if(!b.orb||b.owner!==p.id||b.dead)continue;
         let tx=null,ty=null,bd=1e9;
-        for(const e of S.en){ if(e.hp<=0||!hostile(p.team,e.team))continue;
+        for(const e of S.en){ if(e.hp<=0||e.prop||!hostile(p.team,e.team))continue;
           const d=(e.x-b.x)**2+(e.y-b.y)**2; if(d<bd){bd=d;tx=e.x;ty=e.y;} }
         for(const q of foePlayers(p)){
           const d=(q.x-b.x)**2+(q.y-b.y)**2; if(d<bd){bd=d;tx=q.x;ty=q.y;} }
@@ -578,7 +612,7 @@ function applyClientHit(p,kind,id){
     }else hurt(p,b.dmg||CB.enemyBulletDamage);
   }else if(kind==='m'){
     const e=S.en.find(e2=>e2.id===id&&e2.hp>0);
-    if(!e)return;
+    if(!e||e.prop)return;              // Descent crates/barrels don't bite
     const melee=ET[ETI[e.k]].meleeDash&&e.st===2;
     const CD=CB.contactDamage;
     hurt(p,melee?(e.chargeDmg||CD.meleeDash):e.boss?CD.boss:e.mini?CD.mini:CD.base);
@@ -636,7 +670,8 @@ function damageE(e,dmg,owner,quiet){
       if(p.st.tithe>0){ const bonus=Math.round(sh*p.st.tithe);
         if(bonus>0)for(const q of S.players.values())if(q!==p)q.shards+=bonus; }
     }
-    if(S.obj&&!S.obj.done){
+    if(S.dg&&e.prop)dgPropDeath(e,owner);   // Descent crate loot / barrel blast
+    if(S.obj&&!S.obj.done&&!e.prop){
       if(S.obj.ty==='slay')S.obj.prog++;
       else if(S.obj.ty==='greed')S.obj.prog+=sh;
     }
@@ -655,6 +690,8 @@ function damageE(e,dmg,owner,quiet){
 // not level-up picks) so it gets a flat cap instead of the PvE wave-based
 // ramp — see moba.json shop.maxWeapons.
 const maxSlots=w=>{ if(S&&S.moba)return MOBA.shop.maxWeapons||2;
+  if(S&&S.dg){ const sd=DGN.slotDepths, d=S.dg.depth; // Descent: 2/3/4 slots by depth for big builds
+    return d>=sd[2]?4:d>=sd[1]?3:d>=sd[0]?2:1; }
   const sw=BAL.waves.slotWaves; return w>=sw[1]?3:w>=sw[0]?2:1; };
 function genOpts(p){
   const opts=[];
@@ -830,9 +867,12 @@ function hostUpdate(dt){
   }
   // spawn trickle
   if(S.spawnQ.length){S.spawnT-=dt;
-    if(S.spawnT<=0){S.spawnT=BAL.waves.spawnTrickleSec;S.en.push(S.spawnQ.shift());}}
+    if(S.spawnT<=0){S.spawnT=BAL.waves.spawnTrickleSec;
+      const ne=S.spawnQ.shift();
+      if(S.dg)dgPlaceSpawn(ne);  // Descent: an S marker in the locked room, clear of players
+      S.en.push(ne);}}
   // guardian miniboss on timer
-  if(!S.miniSpawned&&S.waveT>BAL.waves.guardianAfterSec&&S.wave>=BAL.waves.guardianMinWave&&!S.waveDone){
+  if(!S.dg&&!S.miniSpawned&&S.waveT>BAL.waves.guardianAfterSec&&S.wave>=BAL.waves.guardianMinWave&&!S.waveDone){
     S.miniSpawned=true;
     const minis=ET.filter(T=>T.mini);
     if(minis.length){ S.en.push(mkE(minis[irnd(0,minis.length)].id));
@@ -854,7 +894,7 @@ function hostUpdate(dt){
     for(const w of p.weapons){
       const ldef=WPN[w.id]; if(!ldef||ldef.type!=='leech')continue;
       const rng=ldef.range||90; let hasT=false;
-      for(const e of S.en){ if(e.hp<=0||!hostile(p.team,e.team))continue;
+      for(const e of S.en){ if(e.hp<=0||e.prop||!hostile(p.team,e.team))continue;
         if((e.x-p.x)**2+(e.y-p.y)**2<=rng*rng){hasT=true;break;} }
       if(!hasT&&S.pvp)for(const q of foePlayers(p)){
         if((q.x-p.x)**2+(q.y-p.y)**2<=rng*rng){hasT=true;break;} }
@@ -870,7 +910,7 @@ function hostUpdate(dt){
         if(def.drone&&S.dr.filter(d2=>d2.owner===p.id).length>=CB.drones.maxPerPlayer)continue;
         let tg=null;
         if(def.needT){let bd=1e9;
-          for(const e of S.en){ if(!hostile(p.team,e.team))continue; // don't lock onto your own base
+          for(const e of S.en){ if(!hostile(p.team,e.team)||e.prop)continue; // own base / Descent crates
             const d=(e.x-p.x)**2+(e.y-p.y)**2;
             if(d<bd&&d<320*320){bd=d;tg=e;}}
           // In PvP modes hostile PLAYERS are valid targets too. Without this
@@ -1064,7 +1104,7 @@ function hostUpdate(dt){
     let tg=null,bd=1e9;
     const consider=(o,ox,oy)=>{ const dd=(ox-dn.x)**2+(oy-dn.y)**2;
       if(dd<bd){bd=dd;tg=o;} };
-    for(const e of S.en){ if(e.hp<=0)continue;
+    for(const e of S.en){ if(e.hp<=0||e.prop)continue;
       if(dOwner&&!hostile(dOwner.team,e.team))continue;
       if(!inTether(e))continue; consider(e,e.x,e.y); }
     for(const q of S.players.values()){ if(q.dead||q.id===dn.owner)continue;
@@ -1211,7 +1251,7 @@ function hostUpdate(dt){
     // contact damage: only auto-applied to the host's own local player — remote
     // players self-report contact from their own screen (see applyClientHit)
     // so nobody takes a hit that hadn't reached them yet on their own client.
-    for(const p of S.players.values()){ if(p.dead||p.id!==myId)continue;
+    if(!e.prop)for(const p of S.players.values()){ if(p.dead||p.id!==myId)continue;
       if(!hostile(e.team,p.team))continue; // MOBA: don't body-check your own structures
       const d=Math.hypot(e.x-p.x,e.y-p.y);
       if(d<e.r+p.r+1){
@@ -1226,7 +1266,7 @@ function hostUpdate(dt){
     if(b.delay>0){ b.delay-=dt; continue; }   // queued swing head, not live yet
     if(b.home){ let bt=null,bd=1e9;
       const homeOwner=S.players.get(b.owner);
-      for(const e of S.en){ if(homeOwner&&!hostile(homeOwner.team,e.team))continue; // homing must not chase allies
+      for(const e of S.en){ if(e.prop||(homeOwner&&!hostile(homeOwner.team,e.team)))continue; // homing must not chase allies or crates
         const d=(e.x-b.x)**2+(e.y-b.y)**2;if(d<bd){bd=d;bt=e;}}
       if(bt){const ta=Math.atan2(bt.y-b.y,bt.x-b.x),ca=Math.atan2(b.vy,b.vx);
         let da=ta-ca; while(da>Math.PI)da-=TAU; while(da<-Math.PI)da+=TAU;
@@ -1397,6 +1437,7 @@ function hostUpdate(dt){
   S.en=S.en.filter(e=>e.hp>0);
   S.shake=Math.max(0,S.shake-dt);
   mobaUpdate(dt); // no-op unless this is a Nexus Siege match
+  if(S.dg)dgTick(dt); // Descent rooms, doors, encounters, hatch (dungeon.js)
   if(S.training){
     // keep the ring stocked; a dummy that dies is replaced a beat later
     S.trainT=(S.trainT||0)-dt;
@@ -1423,7 +1464,7 @@ function hostUpdate(dt){
   for(const p of S.players.values())
     if(p.pickOpts&&now()>=p.pickUntil) resolvePick(p,0);
   // wave clear (optional enemies don't block)
-  if(!S.training&&!S.waveDone&&!S.spawnQ.length&&!S.en.some(e=>!e.opt)){
+  if(!S.training&&!S.dg&&!S.waveDone&&!S.spawnQ.length&&!S.en.some(e=>!e.opt)){
     S.waveDone=true; S.eb.length=0;
     S.score+=S.wave*BAL.economy.waveClearScore;
     if(S.obj&&!S.obj.done){
@@ -1440,24 +1481,38 @@ function hostUpdate(dt){
    progress rather than farming waves. */
 function sanctumShards(raw){
   const M=(BAL.economy&&BAL.economy.sanctumShardMult)||{siege:1,other:1};
-  return Math.round(raw*((S&&S.moba)?M.siege:M.other));
+  const m=(S&&S.moba)?M.siege:(S&&S.dg)?(M.dungeon!==undefined?M.dungeon:M.other):M.other;
+  return Math.round(raw*m);
 }
-function runOver(){
+/* opts.victory: the floor-3 boss fell (Descent). A Descent run reports depth
+   alongside the wave number the scaling used. */
+function runOver(opts){
   S.over=true;
+  const victory=!!(opts&&opts.victory);
+  const info=S.dg?{victory,depth:S.dg.depth,floor:S.dg.floor}:{victory};
   const me=S.players.get(myId);
-  finishRun(S.wave,S.score,sanctumShards(me?me.shards:0));
+  finishRun(S.wave,S.score,sanctumShards(me?me.shards:0),info);
   for(const c of conns){ const p=S.players.get(c._pid);
-    c.send({t:'go',wave:S.wave,score:S.score,shards:sanctumShards(p?p.shards:0)}); }
+    c.send({t:'go',wave:S.wave,score:S.score,shards:sanctumShards(p?p.shards:0),
+      victory:info.victory?1:0,depth:info.depth,floor:info.floor}); }
 }
-function finishRun(wave,score,shards){
-  mode='dead'; musicStop(); sfx('gameover');
+function finishRun(wave,score,shards,info){
+  info=info||{};
+  const descent=info.depth!==undefined&&info.depth!==null;
+  mode='dead'; musicStop(); sfx(info.victory?'objwin':'gameover');
   save.shards+=shards;
-  if(wave>save.best)save.best=wave;
+  if(descent){ if(info.depth>(save.bestDepth||0))save.bestDepth=info.depth; }
+  else if(wave>save.best)save.best=wave;
   save.records=save.records||[];
-  save.records.push({n:save.name,w:wave,s:score,t:Date.now()});
+  save.records.push(descent?{n:save.name,w:wave,d:info.depth,s:score,t:Date.now(),v:info.victory?1:0}
+                           :{n:save.name,w:wave,s:score,t:Date.now()});
   save.records.sort((a,b)=>b.s-a.s); save.records=save.records.slice(0,10);
   persist();
-  $('dWave').textContent=wave; $('dScore').textContent=score;
+  $('dTitle').textContent=info.victory?'DESCENT COMPLETE':'SIGNAL LOST';
+  $('dTitle').classList.toggle('win',!!info.victory);
+  $('dSub').textContent=info.victory?'the core falls silent':'the circuit remembers';
+  $('dWaveLabel').textContent=descent?'depth':'wave';
+  $('dWave').textContent=descent?info.depth:wave; $('dScore').textContent=score;
   $('dShards').textContent='◆ '+shards;
   $('dWait').classList.toggle('hidden',role!=='client');
   $('btnAgain').classList.toggle('hidden',role==='client');

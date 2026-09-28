@@ -71,7 +71,7 @@
     <button class="pxbtn" id="btnBoard">☰ Records</button>
     <button class="pxbtn" id="btnTrain">⌾ Training</button>
   </div>
-  <div class="statline" style="margin-top:10px">Best wave: <b id="tBest">—</b> · Shards banked: <b id="tShards">0</b></div>
+  <div class="statline" style="margin-top:10px">Best depth: <b id="tBest">—</b> · Shards banked: <b id="tShards">0</b></div>
   <div class="keys"><span><kbd>WASD</kbd> move</span><span><kbd>SPACE</kbd> dash</span><span><kbd>M</kbd> mute</span><span>weapons auto-fire</span></div>
   <div class="note">Dodge everything. Most weapons drink <span class="cyanc">T-charge</span> — a small reactor cell that locks and fast-recharges the moment it hits empty. Melee &amp; orbit weapons are free. Dash through bolts for a damage surge. Die, spend <span class="mag2">◆ shards</span> on permanent power &amp; new classes.</div>
 </div>
@@ -207,9 +207,9 @@
 
 <!-- DEATH -->
 <div id="scrDeath" class="overlay hidden">
-  <h1 style="font-size:24px;color:var(--ember);text-shadow:0 0 12px rgba(255,92,71,.5),3px 3px 0 #1a2440">SIGNAL LOST</h1>
-  <div class="sub">the circuit remembers</div>
-  <div class="statline">Reached wave <b id="dWave">1</b></div>
+  <h1 id="dTitle" style="font-size:24px;color:var(--ember);text-shadow:0 0 12px rgba(255,92,71,.5),3px 3px 0 #1a2440">SIGNAL LOST</h1>
+  <div class="sub" id="dSub">the circuit remembers</div>
+  <div class="statline">Reached <span id="dWaveLabel">depth</span> <b id="dWave">1</b></div>
   <div class="statline">Team score <b id="dScore">0</b></div>
   <div class="statline">Shards recovered <b class="mag2" id="dShards">0</b></div>
   <div style="margin-top:14px">
