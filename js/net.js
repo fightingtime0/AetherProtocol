@@ -157,7 +157,9 @@ function snap(){
   const ar=S.ar.map(a2=>[Math.round(a2.x1),Math.round(a2.y1),Math.round(a2.x2),Math.round(a2.y2)]);
   const pu=(S.pu||[]).map(u=>[Math.round(u.x),Math.round(u.y),Math.round(u.r)]);
   const dn=(S.dnQ||[]).splice(0,20); // queued damage-number pops, like sx below
-  const shp=S.shops?S.shops.map(o=>[Math.round(o.x),Math.round(o.y),o.team,
+  // Descent pads add their own price and who has already used them
+  const shp=S.shops?S.shops.map(o=>o.used?[Math.round(o.x),Math.round(o.y),o.team,
+    SHOP_KINDS.indexOf(o.k),Math.round(o.cd),o.cost,o.used]:[Math.round(o.x),Math.round(o.y),o.team,
     SHOP_KINDS.indexOf(o.k),Math.round(o.cd)]):0;
   const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r),z.col||0]);
   let ob=0;
@@ -169,14 +171,20 @@ function snap(){
   if(S.moba){ const n0=S.en.find(e=>e.k==='nexus'&&e.team===0), n1=S.en.find(e=>e.k==='nexus'&&e.team===1);
     mb=[n0?Math.round(n0.hp/n0.maxhp*100):0, n1?Math.round(n1.hp/n1.maxhp*100):0, S.mobaOver||0,
         (S.kills&&S.kills[0])||0,(S.kills&&S.kills[1])||0]; }
-  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,mk,ar,pu,dn,shp,ob,sx,mb,pvp:S.pvp?1:0,ts:now()};
+  // Descent: [active room, locked, depth, floor, hatch open, hatch hold %, floor seed].
+  // Doors are re-applied from this every snapshot (idempotent), so a dropped
+  // message can never leave a client with a stale door or a stale floor.
+  let dg=0;
+  if(S.dg){ const D=S.dg, H=D.hatch;
+    dg=[D.room,D.locked?1:0,D.depth,D.floor,H?1:0,H?Math.round(H.hold/(DGN.hatchHoldSec||2)*100):0,D.seed]; }
+  return {t:'st',w:S.wave,sc:S.score,pl,en,eb,pb,it,dr,zn,mk,ar,pu,dn,shp,ob,sx,mb,dg,pvp:S.pvp?1:0,ts:now()};
 }
 function bcast(m){ for(const c of conns){try{c.send(m)}catch(e){}} }
 function sendTo(pid,m){ const c=conns.find(c=>c._pid===pid); if(c){try{c.send(m)}catch(e){}} }
 
 /* ---------------- client view ---------------- */
 function blankView(){return {players:new Map(),en:new Map(),eb:[],pb:[],it:[],dr:[],zn:[],mk:[],ar:[],pu:[],shp:0,obj:0,
-  wave:1,score:0,snapT:0,snapDt:80,pvp:false};}
+  wave:1,score:0,snapT:0,snapDt:80,pvp:false,dg:0,dgDisc:new Set()};}
 function applySnap(s){
   if(!V)V=blankView();
   const t=now();
@@ -226,6 +234,12 @@ function applySnap(s){
   V.eb=s.eb; V.pb=s.pb; V.it=s.it; V.dr=s.dr||[]; V.zn=s.zn||[]; V.obj=s.ob||0;
   V.mk=s.mk||[]; V.ar=s.ar||[]; V.pu=s.pu||[]; V.shp=s.shp||0; // smite marks, pulse rings, chain arcs, shard pads
   V.mb=s.mb||0; // Nexus Siege HUD: [nexus0 hp%, nexus1 hp%, winner]
+  V.dg=s.dg||0;
+  if(V.dg){
+    // wrong or missing floor (a lost 'fl', a late join) → rebuild from the seed
+    if(!TM||TM.seed!==V.dg[6]||TM.floor!==V.dg[3]){ dgBuild(V.dg[6],V.dg[3]); V.dgDisc=new Set(); }
+    dgSyncLock(V.dg[0],!!V.dg[1]);
+  }else if(TM&&!TM.test)TM=null;
 }
 /* ---- latency compensation ----------------------------------------
    V.snapT is stamped when a snapshot ARRIVES, so anything extrapolated
@@ -357,7 +371,8 @@ function hostOnData(c,d){
     lobby.players.push({id:c._pid,name:d.name,sprite:d.sprite,sprites:d.sprites,meta:d.meta||{},cls:d.cls||CLASSES[0].id,
       team:n1<n0?1:0});
     conns.push(c);
-    c.send({t:'wl',id:c._pid,obstacles,ww:WW,wh:WH,diff:diffKey,inGame:mode==='play'});
+    const inGame=mode==='play';
+    c.send({t:'wl',id:c._pid,obstacles,ww:WW,wh:WH,diff:diffKey,inGame,dg:inGame&&S&&S.dg?dgNetInfo():null});
     updatePeerList(); toast(d.name+' linked in');
     bcastRoster();
     if(mode==='play'&&S){ // late join
@@ -365,14 +380,16 @@ function hostOnData(c,d){
       const p=mkPlayer(pi.id,pi.name,pi.sprite,pi.cls);
       applyMetaObj(p,pi.meta);
       S.players.set(p.id,p);
-      c.send({t:'begin',obstacles,ww:WW,wh:WH,diff:diffKey});
+      if(S.dg){ const sp=dgLateJoinSpot(); p.x=sp[0]; p.y=sp[1]; p.inv=2; p.dgIgnoreInUntil=now()+900; }
+      c.send({t:'begin',obstacles,ww:WW,wh:WH,diff:diffKey,dg:dgNetInfo(),
+        x:S.dg?Math.round(p.x):undefined,y:S.dg?Math.round(p.y):undefined});
     }
   }else if(d.t==='tm'){ // ally picked a side in the siege lobby
     const pi=lobby.players.find(x=>x.id===c._pid);
     if(pi){ pi.team=(d.team===1)?1:0; updatePeerList(); bcastRoster(); }
   }else if(d.t==='pg'){ try{c.send({t:'po',c:d.c})}catch(e){} } // RTT probe — echo the client's clock back untouched
   else if(d.t==='in'){ const p=S&&S.players.get(c._pid);
-    if(p&&!p.dead){p.x=clamp(d.x,6,WW-6);p.y=clamp(d.y,6,WH-6);if(d.inv)p.inv=Math.max(p.inv,.1);
+    if(p&&!p.dead&&(!S.dg||dgAcceptIn(p,d))){p.x=clamp(d.x,6,WW-6);p.y=clamp(d.y,6,WH-6);if(d.inv)p.inv=Math.max(p.inv,.1);
       if(d.dg)onDodge(p);}}   // client dashed — host owns the consequence
   else if(d.t==='ck'){ const p=S&&S.players.get(c._pid); if(p)resolvePick(p,d.i); }
   else if(d.t==='dw'){ const p=S&&S.players.get(c._pid); if(p)discardWeapon(p,d.i); }
@@ -454,9 +471,10 @@ function clientOnData(c,d){
   switch(d.t){
     case 'wl': myId=d.id; obstacles=d.obstacles;
       if(d.ww){WW=d.ww;WH=d.wh;}
+      if(d.dg)dgBuild(d.dg.seed,d.dg.floor); else TM=null;
       if(d.diff&&DIFFS[d.diff])diffKey=d.diff;
       setStatus('Linked as ally #'+d.id+'. Waiting for host…');
-      if(d.inGame){enterPlayClient();} break;
+      if(d.inGame){enterPlayClient(d);} break;
     case 'ros': clientRoster.clear();
       d.players.forEach(p=>{
         const frames=p.sprites&&p.sprites.length?p.sprites:[p.sprite];
@@ -471,7 +489,8 @@ function clientOnData(c,d){
     case 'begin': obstacles=d.obstacles; if(d.ww){WW=d.ww;WH=d.wh;}
       if(d.diff&&DIFFS[d.diff])diffKey=d.diff;
       lobbyMode=d.mode||'coop'; if(d.team!==undefined)myTeam=d.team;
-      enterPlayClient(); break;
+      if(d.dg)dgBuild(d.dg.seed,d.dg.floor); else TM=null;   // Descent floor from its seed
+      enterPlayClient(d); break;
     case 'po':{ const r=now()-d.c;                 // our own clock both ways — no sync needed
       netRtt=netRtt?netRtt*.8+r*.2:r; break; }     // EMA: one slow packet shouldn't jerk the lead
     case 'st': applySnap(d); break;
@@ -481,14 +500,27 @@ function clientOnData(c,d){
     case 'go': finishRun(d.wave,d.score,d.shards,d.depth!==undefined?{victory:!!d.victory,depth:d.depth,floor:d.floor}:{}); break;
     case 'rs': obstacles=d.obstacles; if(d.ww){WW=d.ww;WH=d.wh;}
       if(d.diff&&DIFFS[d.diff])diffKey=d.diff;
-      $('scrDeath').classList.add('hidden'); enterPlayClient(); break;
+      if(d.dg)dgBuild(d.dg.seed,d.dg.floor); else TM=null;
+      $('scrDeath').classList.add('hidden'); enterPlayClient(d); break;
+    case 'tp': // Descent pull-in: the host moved us into the room that just sealed
+      myPos.x=d.x; myPos.y=d.y;
+      if(typeof smoothPos!=='undefined'&&smoothPos){ smoothPos.x=d.x; smoothPos.y=d.y; }
+      break;
+    case 'fl': // Descent floor change: same seed → same floor as the host
+      dgBuild(d.seed,d.floor); if(V)V.dgDisc=new Set();
+      { const sp=(d.x!==undefined)?[d.x,d.y]:dgEntrySpot(0);
+        myPos.x=sp[0]; myPos.y=sp[1]; myPos.inv=Math.max(myPos.inv||0,(DGN&&DGN.floorInvulnSec)||1);
+        if(typeof smoothPos!=='undefined'&&smoothPos){ smoothPos.x=sp[0]; smoothPos.y=sp[1]; } }
+      break;
   }
 }
-function enterPlayClient(){
+function enterPlayClient(d){
   V=blankView(); mode='play'; musicStart();
-  // a siege drops you at your own base, not the middle of the map
+  // a siege drops you at your own base, not the middle of the map; Descent
+  // at the spot the host picked for you (start room, or beside the party)
   let sx=WW/2, sy=WH/2;
   if(lobbyMode==='siege'&&MOBA){ const sp=mobaSpawn(myTeam); sx=sp.x; sy=sp.y; }
+  else if(TM){ const sp=(d&&d.x!==undefined)?[d.x,d.y]:dgEntrySpot(0); sx=sp[0]; sy=sp[1]; }
   myPos={x:sx,y:sy,inv:0,dashT:0,dashing:0,spd:BAL.player.speed,dcd:BAL.player.dashCooldown,dead:false};
   show(null); $('hud').classList.remove('hidden');
 }

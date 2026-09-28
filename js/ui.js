@@ -72,7 +72,7 @@ function checkLocalHits(){
   const t=now();
   for(const e of V.en.values()){
     if(t-(reportedMelee.get(e.id)||0)<300)continue;
-    const T=ET[e.ti]; if(!T)continue;
+    const T=ET[e.ti]; if(!T||T.prop)continue;   // Descent crates/barrels don't bite
     if(Math.hypot(e.dx-myPos.x,e.dy-myPos.y)<T.r+r+1){
       reportedMelee.set(e.id,t);
       if(conns[0]&&conns[0].open)conns[0].send({t:'hit',k:'m',id:e.id});

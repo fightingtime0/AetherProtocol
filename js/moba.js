@@ -252,7 +252,8 @@ function grantAssistXp(killer,fullXp,victim){
    All five go on cooldown afterwards so they can't be spammed. */
 // single source of truth for the shop's network kind-code (net.js snap()
 // encodes a shop pad's .k as this array's index; render.js decodes it back)
-const SHOP_KINDS=['reinf','amp','payload','wpn','chest'];
+// Descent's shop-room pads (mend/cache/refine, dungeon.js) ride the same pipeline
+const SHOP_KINDS=['reinf','amp','payload','wpn','chest','mend','cache','refine'];
 const SHOP_COST={reinf:'creepCost',amp:'ampCost',payload:'payloadCost',wpn:'wpnCost',chest:'chestCost'};
 const SHOP_COOLDOWN={reinf:'creepCooldown',amp:'ampCooldown',payload:'payloadCooldown',wpn:'wpnCooldown',chest:'chestCooldown'};
 function mobaSpawnShops(){

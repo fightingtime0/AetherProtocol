@@ -653,3 +653,26 @@ function dgShopTick(dt){
 /* What a client needs to rebuild the current floor: {seed, floor}, or null
    outside a Descent run (the client then clears any stale tilemap). */
 function dgNetInfo(){ return (S&&S.dg)?{seed:S.dg.seed,floor:S.dg.floor}:null; }
+/* Late join mid-run: inside the sealed room if a fight is on (they'd be
+   pulled in anyway), else beside a living ally, else the start entry. */
+function dgLateJoinSpot(){
+  const D=S.dg;
+  if(D.room>=0&&D.locked)return dgRoomFloorPoint(D.room,20);
+  const a=dgAlive()[0];
+  if(a){ const sp={x:a.x+rnd(-12,12),y:a.y+rnd(-12,12),r:3}; collideTiles(sp); return [sp.x,sp.y]; }
+  return dgEntrySpot(S.players.size);
+}
+/* Host: should this client's reported position be taken? Not in the moment
+   after a floor change/late join (packets still carry the old spot), and
+   never from OUTSIDE a sealed room (anti-rubber-band) — that one gets its
+   'tp' re-sent, at most every tpResendMs. */
+function dgAcceptIn(p,d){
+  if(p.dgIgnoreInUntil&&now()<p.dgIgnoreInUntil)return false;
+  const D=S.dg;
+  if(D.room>=0&&D.locked&&dgRoomAt(d.x,d.y)!==D.room){
+    if(!p.dgTpT||now()-p.dgTpT>=(DGN.tpResendMs||500)){
+      p.dgTpT=now(); sendTo(p.id,{t:'tp',x:Math.round(p.x),y:Math.round(p.y)}); }
+    return false;
+  }
+  return true;
+}
