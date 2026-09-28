@@ -388,26 +388,31 @@ function dgPlaceSpawn(e){
    Multi-source BFS over the locked room's rect + 1 tile, from every living
    player's tile inside it; 8-neighbour without corner cutting; walk-solid
    tiles blocked. Recomputed every flowRecalcSec. */
+const DG_NX=[1,-1,0,0,1,1,-1,-1], DG_NY=[0,0,1,-1,1,-1,1,-1];
 function dgFlowBuild(ri){
-  const rm=TM.rooms[ri];
+  const rm=TM.rooms[ri], TW=TM.w, T=TM.t;
   const x0=Math.max(0,rm.tx-1), y0=Math.max(0,rm.ty-1);
-  const w=Math.min(TM.w,rm.tx+rm.tw+1)-x0, h=Math.min(TM.h,rm.ty+rm.th+1)-y0;
-  const dist=new Int16Array(w*h).fill(-1), q=new Int32Array(w*h);
+  const w=Math.min(TW,rm.tx+rm.tw+1)-x0, h=Math.min(TM.h,rm.ty+rm.th+1)-y0, N=w*h;
+  // passability once up front, so the BFS inner loop is plain array reads
+  const pass=new Uint8Array(N);
+  for(let y=0;y<h;y++){ const row=(y+y0)*TW+x0, o=y*w;
+    for(let x=0;x<w;x++){ const v=T[row+x];
+      pass[o+x]=(v===T_FLOOR||v===T_DOOR||v===T_HAZ)?1:0; } }
+  const dist=new Int16Array(N).fill(-1), q=new Int32Array(N);
   let qh=0, qt=0;
   for(const p of S.players.values()){ if(p.dead)continue;
     const tx=Math.floor(p.x/TM.ts)-x0, ty=Math.floor(p.y/TM.ts)-y0;
     if(tx<0||ty<0||tx>=w||ty>=h)continue;
     const k=ty*w+tx; if(dist[k]===0)continue;
     dist[k]=0; q[qt++]=k; }
-  const open=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&!walkSolid(TM.t[(y+y0)*TM.w+x+x0]);
   while(qh<qt){
-    const k=q[qh++], x=k%w, y=(k/w)|0, nd=dist[k]+1;
-    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-      if(!dx&&!dy)continue;
-      const nx=x+dx, ny=y+dy;
-      if(!open(nx,ny))continue;
-      if(dx&&dy&&(!open(x+dx,y)||!open(x,y+dy)))continue;   // no corner cutting
-      const nk=ny*w+nx; if(dist[nk]>=0)continue;
+    const k=q[qh++], x=k%w, y=(k-x)/w, nd=dist[k]+1;
+    for(let i=0;i<8;i++){
+      const dx=DG_NX[i], dy=DG_NY[i], nx=x+dx, ny=y+dy;
+      if(nx<0||ny<0||nx>=w||ny>=h)continue;
+      const nk=k+dy*w+dx;
+      if(!pass[nk]||dist[nk]>=0)continue;
+      if(i>=4&&(!pass[k+dx]||!pass[k+dy*w]))continue;   // no corner cutting
       dist[nk]=nd; q[qt++]=nk;
     }
   }
@@ -619,7 +624,9 @@ function dgTreasure(rm){
   for(let i=0;i<extra;i++)S.it.push({k:2,x:c0[0]+(i+1)*14,y:c0[1]+10});
   sfxE('chest');
 }
-const DG_SHOP_KINDS=PAD_KINDS.slice(SHOP_KINDS.length);   // mend, cache, refine (moba.js table)
+// mend, cache, refine — the tail of moba.js's PAD_KINDS table. The fallback
+// keeps dungeon.js loadable without moba.js (tools/dungeon-preview.html).
+const DG_SHOP_KINDS=(typeof PAD_KINDS!=='undefined')?PAD_KINDS.slice(SHOP_KINDS.length):['mend','cache','refine'];
 function dgShopOpen(rm){
   const f=Math.min(S.dg.floor,2), SH=DGN.shop||{};
   rm.shop.forEach((s,i)=>{

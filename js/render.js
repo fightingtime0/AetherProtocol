@@ -654,7 +654,8 @@ function drawMinimap(en,players,isHost){
    treasure/shop marks, player dots. Discovery is local — each client tracks
    where it and its allies have stood; the host also has S.dg.disc. */
 function drawDungeonMinimap(players,isHost){
-  const mw=112, mh=Math.round(mw*TM.h/TM.w), mx=VW-mw-6, my=6;
+  // sits below the SCORE/shards readout (the open-field 64×36 map fits beside it; this one doesn't)
+  const mw=112, mh=Math.round(mw*TM.h/TM.w), mx=VW-mw-6, my=26;
   const sx=mw/(TM.w*TM.ts), sy=mh/(TM.h*TM.ts);
   let disc, active;
   if(isHost&&S&&S.dg){ disc=S.dg.disc; active=S.dg.room; }

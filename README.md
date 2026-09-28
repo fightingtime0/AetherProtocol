@@ -1,20 +1,39 @@
 # AETHER//PROTOCOL
 
-A pixel-art, peer-to-peer co-op **bullet-hell wave survival** game that runs entirely in the browser.
+A pixel-art, peer-to-peer co-op **bullet-hell dungeon roguelike** that runs entirely in the browser.
 No build step, no backend — static files only, deployable straight to **Vercel** or GitHub Pages.
 
 Play solo or share a 4-letter room code with friends (co-op is peer-to-peer via PeerJS; the host runs the simulation).
 
 ---
 
-## Gameplay loop
+## Modes
+
+- **Descent** (solo, and CO-OP → *DESCENT* in the lobby, and every "Descend again") — a ~30-minute dungeon run
+  across **3 floors** (Rust Catacombs → Hex Gardens → Aether Core). Each floor is one continuous tilemap of
+  hand-authored rooms generated from a seed; the Titan waits at the bottom. No mid-run saves.
+- **Nexus Siege** (lobby chip *NEXUS SIEGE*) — team-vs-team lane mode with bots, structures and a shard shop.
+- **Battleground** — the persistent 24/7 PvPvE server (`server/`), still the old open-field waves.
+- **Training range** — any weapon/level/rarity/relics against respawning dummies. The *DUNGEON ROOM* toggle
+  swaps the open field for one Descent room, for checking walls, pits and hazards by hand.
+
+## Gameplay loop (Descent)
 
 1. **Title → START → pick a difficulty** → play solo, or host/join a co-op room.
-2. **Survive waves.** Enemies spawn on a budget that grows each wave. Weapons auto-fire; your job is movement, dodging, and resource pacing.
-3. **Clear a wave → Attune.** Time freezes and each living player picks 1 of 3 cards: a new weapon, a weapon upgrade, or a relic (passive). Weapon slots grow to 2 at wave 5 and 3 at wave 10.
-4. **Every 5th wave is a boss** (with its own healthbar). Bosses rotate through a pool; some bosses send **unique minions** ahead of them in the two preceding waves.
-5. **Random side objectives** (some waves): slay quotas, no-damage, hold-the-circle, speed clears, shard harvests — completing one pays every player bonus shards. The toast when one rolls always states the exact goal number, the time limit, and the fail condition in one line (see `objIntro()` in `sim.js`); the HUD banner then tracks live progress.
-6. **Die.** Your shards bank permanently. Spend them in the **Sanctum** (permanent stat ranks) or the **Character Forge** (unlock new classes). Descend again, deeper.
+2. **Walk into a room and it seals.** Combat, elite and boss rooms lock their doors (cyan energy bars) the
+   moment anyone steps through; in co-op everyone outside is **pulled in** beside them. Enemies portal in on
+   the room's spawn points, and route around walls with a flow field.
+3. **Clear it → Attune.** Doors open, downed allies revive, and each living player picks 1 of 3 cards: a new
+   weapon, a weapon upgrade, or a relic. Every clear adds **depth**, which drives difficulty
+   (`S.wave = depth × dungeon.json depthWaveMult`). Weapon slots grow to 2/3/4 at depth 3/8/16.
+4. **Side rooms:** treasure rooms hold chests; shop rooms have three pads — **Mend** (heal 40%), **Cache**
+   (a chest), **Refine** (an extra pick) — each usable once per player, paid in shards you then don't bank.
+   Crates drop loot; explosive barrels chain and hurt *everyone* nearby.
+5. **Boss room** at the end of each floor (floor 2's is a BIG boss, floor 3's is the Titan). Beat it and the
+   **exit hatch** opens: gather on it for 2 seconds to descend. Beating the Titan completes the Descent.
+6. **Random side objectives** still roll in combat rooms (slay, no-damage, hold-the-circle, speed, harvest).
+7. **Die.** Shards bank permanently (×0.6 in Descent) — spend them in the **Sanctum** or the **Character Forge**.
+   The title shows your best depth.
 
 ## Mechanics
 
@@ -66,6 +85,8 @@ js/
   weapons.js        weapon behavior archetypes (see "type" below)
   enemies.js        enemy AI implementations (see "ai" below)
   sim.js            host-authoritative simulation (waves, damage, picks, objectives)
+  moba.js           Nexus Siege: teams, lane, structures, shop pads, bots
+  dungeon.js        Descent: seeded floor generation, rooms/doors, encounters, flow fields (headless-safe)
   net.js            PeerJS co-op: lobby, snapshots, client view
   render.js         canvas renderer, minimap, HUD
   ui.js             screens, menus, character editor, input
@@ -79,6 +100,12 @@ data/
   passives.json     relics offered during Attune picks
   meta.json         Sanctum permanent upgrades
   sprites.json      extra non-enemy sprites (e.g. the servitor drone)
+  dungeon.json      Descent tuning: floors, room mix, biomes, pacing, loot, shop prices
+  rooms.json        Descent room templates (hand-authored ASCII, validated at load and in tests)
+  tiles.json        Descent tile & prop pixel art ({pal, rows}), baked per biome
+tools/
+  dungeon-preview.html  render any seed/floor of Descent: rooms, doors, spawns, validator errors
+  turn-test.html        TURN relay credential check
 legacy/             the original single-file version, kept for reference
 server/             persistent Battleground server (Node + WebSockets) — see server/README.md
 ```
@@ -126,6 +153,16 @@ Each entry has stats, an inline pixel `sprite` (`pal` + `rows`), and an `ai` key
 - `boss: true` + `bossName` → gets the big healthbar; add `inRotation: true` to join the every-5-waves rotation (order in the file = fight order); add `minion: "<enemy id>"` and that minion escorts the boss **and infiltrates the two waves before it**.
 - `unique: true` marks boss-bound minions (excluded from generic pools).
 - **Multi-part bosses**: give a boss entry `"parts": ["<enemy id>", ...]` (repeat an id for multiple copies, e.g. two `pylon`s). Each listed part spawns alongside the boss, tagged with `core` = the boss's runtime id. While *any* part is still alive the core takes only `combat.shieldedDmgFrac` of incoming damage (see `damageE()` in `sim.js`) and the HUD boss bar shows `⛨ SHIELDED`; killing the last part flips a one-time "CORE EXPOSED" toast. Parts mark themselves `"partOf": true` (documentation only — they're excluded from generic spawn pools simply by having no `pool` spec) and get their own `ai` in `enemies.js`. See `dreadnought`/`pylon` for the reference implementation: the pylons orbit the core (`balance.json → combat.pylon`) and must be shot down before the core itself takes real damage.
+
+### Descent rooms (`data/rooms.json`, `data/dungeon.json`)
+A room template is the **interior** of a room on a cell grid (one cell = 20×12 tiles of 16 px; the outer
+ring is always wall): `S` 2×2 cells = 38×22 chars, `M` 3×2 = 58×22, `Mv` 2×3 = 38×34, `L` 3×3 = 58×34,
+`B` 4×4 = 78×46. Chars: `.` floor · `#` wall · `~` pit · `^` hazard grate · `S` spawn · `C` chest ·
+`$` shop pad · `A` shrine · `H` exit hatch · `@` entry · `P` pillar · `K` crystal · `X` crate · `O` barrel ·
+`r` rubble · `T` terminal · `b` brazier. The middle 4 tiles of every cell edge, 2 deep, must stay floor
+(that's where doors get cut, and it stays true when a template is mirrored). Templates are picked by
+`type` + footprint and randomly mirrored. Open **`tools/dungeon-preview.html`** (over HTTP) to see any
+seed/floor and any template errors; `dungeon.json` holds the floor recipes, biome tints and every number.
 
 ### Balance (`data/balance.json`)
 One file, every knob: base HP/speed, **T-charge** (`player.t.start/rechargeRate/genRate`), shield delay/rate, dash & Phase Surge, drone/orbit/saber/pylon combat shapes, wave budget math, objective goals & rewards, meta price growth. Change a number, refresh, done.
