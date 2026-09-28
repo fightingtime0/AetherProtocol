@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Descent floor preview</title>
+<style>
+  :root{--bg:#0b0e1a;--panel:#141a2e;--line:#2a3352;--ink:#e8ecff;--dim:#6b7396;--cyan:#4ef0e8;--gold:#ffd35c;--ember:#ff5c47;--mag:#ff4fd8}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
+  header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header b{color:var(--cyan);letter-spacing:.08em}
+  input,select,button{background:#0b0e1a;color:var(--ink);border:1px solid var(--line);padding:5px 8px;font:inherit}
+  button{cursor:pointer} button:hover{border-color:var(--cyan)}
+  label{color:var(--dim)}
+  #wrap{padding:12px 16px}
+  canvas{display:block;max-width:100%;image-rendering:pixelated;border:1px solid var(--line)}
+  #info{margin-top:8px;color:var(--dim);white-space:pre-wrap}
+  #errs{color:var(--ember);white-space:pre-wrap}
+  .key span{margin-right:12px}
+</style>
+</head>
+<body>
+<header>
+  <b>DESCENT // FLOOR PREVIEW</b>
+  <label>seed <input id="seed" type="number" value="1234" style="width:110px"></label>
+  <label>floor <select id="floor"><option value="0">1</option><option value="1">2</option><option value="2">3</option></select></label>
+  <button id="regen">regenerate</button>
+  <button id="next">next seed ▸</button>
+  <label><input id="art" type="checkbox" checked> baked art</label>
+  <label><input id="marks" type="checkbox" checked> markers</label>
+</header>
+<div id="wrap">
+  <canvas id="view"></canvas>
+  <div class="key" style="margin-top:6px">
+    <span style="color:#ff5c47">● spawn</span><span style="color:#ffd35c">● chest</span><span style="color:#7cff6b">● entry</span>
+    <span style="color:#b3a6ff">● hatch</span><span style="color:#ff4fd8">● shop</span><span style="color:#4ef0e8">▬ door</span>
+  </div>
+  <div id="info"></div>
+  <div id="errs"></div>
+</div>
+<!-- the game's own files: generation, baking and chunk rendering are the real thing -->
+<canvas id="game" style="display:none"></canvas>
+<div id="toasts" style="display:none"></div>
+<script src="../js/util.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/dungeon.js"></script>
+<script src="../js/render.js"></script>
+<script>
+"use strict";
+const TYPE_COL={start:'#7cff6b',combat:'#4ef0e8',elite:'#ffd35c',treasure:'#ffd35c',shop:'#ff4fd8',boss:'#ff5c47',training:'#b3a6ff'};
+const TCOL=['#070910','#1a2440','#39415f','#2f6f6c','#4ef0e8','#05070d','#7a2a22'];
+async function boot(){
+  const get=p=>fetch('../data/'+p).then(r=>{if(!r.ok)throw new Error(p+' '+r.status);return r.json();});
+  DGN=await get('dungeon.json'); ROOMT=await get('rooms.json'); TILES=await get('tiles.json');
+  bakeTiles(TILES,DGN.biomes);
+  const bad=dgValidateAll();
+  document.getElementById('errs').textContent=Object.keys(bad).length
+    ?'TEMPLATE ERRORS\n'+Object.entries(bad).map(([k,v])=>k+': '+v.join('; ')).join('\n'):'';
+  document.getElementById('regen').onclick=draw;
+  document.getElementById('next').onclick=()=>{const s=document.getElementById('seed'); s.value=(+s.value||0)+1; draw();};
+  ['floor','art','marks'].forEach(id=>document.getElementById(id).onchange=draw);
+  draw();
+}
+function draw(){
+  const seed=(+document.getElementById('seed').value)|0, fl=+document.getElementById('floor').value;
+  const art=document.getElementById('art').checked, marks=document.getElementById('marks').checked;
+  let tm; const t0=performance.now();
+  try{ tm=dgBuild(seed,fl); }catch(e){ document.getElementById('info').textContent=String(e); return; }
+  const genMs=performance.now()-t0;
+  const sc=Math.min(1,(innerWidth-40)/(tm.w*tm.ts));
+  const W=Math.round(tm.w*tm.ts*sc), H=Math.round(tm.h*tm.ts*sc);
+  const v=document.getElementById('view'); v.width=W; v.height=H;
+  const c=v.getContext('2d'); c.imageSmoothingEnabled=false;
+  c.fillStyle='#070910'; c.fillRect(0,0,W,H);
+  if(art){
+    const S0=DG_CHUNK*tm.ts;
+    for(let cy=0;cy*DG_CHUNK<tm.h;cy++)for(let cx=0;cx*DG_CHUNK<tm.w;cx++)
+      c.drawImage(dgBakeChunk(cx,cy),cx*S0*sc,cy*S0*sc,S0*sc,S0*sc);
+  }else{
+    const p=tm.ts*sc;
+    for(let y=0;y<tm.h;y++)for(let x=0;x<tm.w;x++){ c.fillStyle=TCOL[tm.t[y*tm.w+x]]; c.fillRect(x*p,y*p,Math.ceil(p),Math.ceil(p)); }
+  }
+  c.font='bold 12px monospace'; c.textAlign='left';
+  for(const r of tm.rooms){
+    c.strokeStyle=TYPE_COL[r.type]||'#fff'; c.lineWidth=2;
+    c.strokeRect(r.x*sc+1,r.y*sc+1,r.w*sc-2,r.h*sc-2);
+    c.fillStyle='rgba(0,0,0,.65)'; c.fillRect(r.x*sc+4,r.y*sc+4,Math.min(r.w*sc-8,190),30);
+    c.fillStyle=TYPE_COL[r.type]||'#fff';
+    c.fillText('#'+r.i+' '+r.type.toUpperCase()+(r.branch?' (branch)':''),r.x*sc+8,r.y*sc+17);
+    c.fillStyle='#8f9ac2'; c.font='10px monospace';
+    c.fillText(r.tpl+(r.mx?' ↔':'')+(r.my?' ↕':''),r.x*sc+8,r.y*sc+30); c.font='bold 12px monospace';
+    if(!marks)continue;
+    const dot=(pts,col,s)=>{ c.fillStyle=col; for(const [x,y] of pts)c.fillRect(x*sc-s/2,y*sc-s/2,s,s); };
+    dot(r.spawns,'#ff5c47',5); dot(r.chests,'#ffd35c',6); dot(r.entry,'#7cff6b',7);
+    dot(r.hatch,'#b3a6ff',8); dot(r.shop,'#ff4fd8',6);
+  }
+  c.fillStyle='#4ef0e8';
+  for(const d of tm.doors)for(const i of d.tiles){ const x=i%tm.w, y=(i/tm.w)|0;
+    c.fillRect(x*tm.ts*sc,y*tm.ts*sc,Math.max(2,tm.ts*sc),Math.max(2,tm.ts*sc)); }
+  const counts={}; tm.rooms.forEach(r=>counts[r.type]=(counts[r.type]||0)+1);
+  document.getElementById('info').textContent=
+    `${tm.name} · biome ${tm.biome} · seed ${seed}${tm.genSeed!==(seed>>>0)?' (layout restarted at '+tm.genSeed+')':''} · `+
+    `${tm.rooms.length} rooms ${JSON.stringify(counts)} · ${tm.doors.length} doors · generated in ${genMs.toFixed(1)} ms · hash ${dgHash(tm).toString(16)}`;
+}
+boot().catch(e=>{document.getElementById('errs').textContent=String(e);console.error(e);});
+</script>
+</body>
+</html>
