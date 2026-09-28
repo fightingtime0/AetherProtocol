@@ -145,7 +145,7 @@ function render(){
     ctx.fillRect(Math.round(f.x),Math.round(f.y),1,1);}
   ctx.globalAlpha=1;
   // shard pads (Nexus Siege): reinforcements/amplifier/payload + weapon roll
-  // + cache. kindCode order matches SHOP_KINDS (moba.js) exactly.
+  // + cache, and Descent's mend/cache/refine. kindCode order matches PAD_KINDS (moba.js).
   const SHOP_ICON=['⚔','✚','☢','⚙','▣'],
     SHOP_LABEL=['REINFORCE','AMPLIFY','PAYLOAD','ROLL WEAPON','OPEN CACHE'],
     SHOP_COSTK=['creepCost','ampCost','payloadCost','wpnCost','chestCost'];
@@ -153,7 +153,7 @@ function render(){
   if(shops)for(const o of shops){
     const ox=isHost?o.x:o[0], oy=isHost?o.y:o[1];
     const oteam=isHost?o.team:o[2];
-    const kindCode=isHost?SHOP_KINDS.indexOf(o.k):o[3];
+    const kindCode=isHost?PAD_KINDS.indexOf(o.k):o[3];
     const ocd=isHost?o.cd:o[4];
     if(!vis(ox,oy,34))continue;
     const small=kindCode<=2; // reinf/amp/payload cluster tighter near each other

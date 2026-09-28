@@ -619,7 +619,7 @@ function dgTreasure(rm){
   for(let i=0;i<extra;i++)S.it.push({k:2,x:c0[0]+(i+1)*14,y:c0[1]+10});
   sfxE('chest');
 }
-const DG_SHOP_KINDS=['mend','cache','refine'];
+const DG_SHOP_KINDS=PAD_KINDS.slice(SHOP_KINDS.length);   // mend, cache, refine (moba.js table)
 function dgShopOpen(rm){
   const f=Math.min(S.dg.floor,2), SH=DGN.shop||{};
   rm.shop.forEach((s,i)=>{

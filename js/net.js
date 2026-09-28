@@ -159,8 +159,8 @@ function snap(){
   const dn=(S.dnQ||[]).splice(0,20); // queued damage-number pops, like sx below
   // Descent pads add their own price and who has already used them
   const shp=S.shops?S.shops.map(o=>o.used?[Math.round(o.x),Math.round(o.y),o.team,
-    SHOP_KINDS.indexOf(o.k),Math.round(o.cd),o.cost,o.used]:[Math.round(o.x),Math.round(o.y),o.team,
-    SHOP_KINDS.indexOf(o.k),Math.round(o.cd)]):0;
+    PAD_KINDS.indexOf(o.k),Math.round(o.cd),o.cost,o.used]:[Math.round(o.x),Math.round(o.y),o.team,
+    PAD_KINDS.indexOf(o.k),Math.round(o.cd)]):0;
   const zn=S.zn.map(z=>[Math.round(z.x),Math.round(z.y),Math.round(z.r),z.col||0]);
   let ob=0;
   if(S.obj)ob=[OBJ_TYS.indexOf(S.obj.ty),Math.round(S.obj.prog),Math.round(S.obj.goal),
