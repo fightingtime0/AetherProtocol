@@ -1,0 +1,48 @@
+{
+  "_comment": "DESCENT dungeon runs — every designer-tunable number. See DESIGN-dungeon-runs.md (outside the repo) §4. Footprints are in cells; one cell = cell[0] x cell[1] tiles of tile px.",
+  "tile": 16, "cell": [20, 12], "grid": [14, 12],
+  "footprints": { "S": [2, 2], "M": [3, 2], "Mv": [2, 3], "L": [3, 3], "B": [4, 4] },
+  "typeFootprints": {
+    "start": ["S"], "combat": ["S", "M", "Mv", "L"], "elite": ["M", "L"],
+    "treasure": ["S"], "shop": ["S"], "boss": ["B"]
+  },
+  "depthWaveMult": 1.35,
+  "slotDepths": [3, 8, 16],
+  "wavesPerRoom": { "S": 1, "M": 2, "Mv": 2, "L": 2 },
+  "roomBudgetMult": { "S": 0.8, "M": 1.05, "Mv": 1.05, "L": 1.35 },
+  "eliteEscortMult": 0.6,
+  "eliteGuardians": ["brute", "warlock"],
+  "secondWaveAt": 0.2,
+  "telegraphSec": 0.8,
+  "triggerInset": 24,
+  "spawnMinDist": 96,
+  "hazardDps": 6,
+  "pullInPad": 12,
+  "tpResendMs": 500,
+  "hatchRadius": 40,
+  "hatchHoldSec": 2,
+  "floorInvulnSec": 1,
+  "victoryDelaySec": 2,
+  "flowRecalcSec": 0.25,
+  "crate": { "shardChance": 0.35, "shardValue": [4, 10], "heartChance": 0.10, "heartValue": 25 },
+  "barrel": { "radius": 70, "damage": 60 },
+  "bossDrops": { "chests": 2, "heartsPerPlayer": 1, "heartValue": 25 },
+  "shop": { "mend": {"cost":[40,70,110], "heal":0.4}, "cache": {"cost":[60,100,150]}, "refine": {"cost":[80,130,190]}, "radius": 20 },
+  "floors": [
+    { "name": "RUST CATACOMBS", "biome": 0, "boss": "rotation",
+      "main": ["start","combat","combat","combat","elite","combat","combat","boss"],
+      "branches": ["treasure","shop","combat"] },
+    { "name": "HEX GARDENS", "biome": 1, "boss": "big",
+      "main": ["start","combat","combat","elite","combat","combat","combat","boss"],
+      "branches": ["treasure","shop","combat"] },
+    { "name": "AETHER CORE", "biome": 2, "boss": "titan",
+      "main": ["start","combat","combat","elite","combat","combat","elite","boss"],
+      "branches": ["treasure","treasure","shop"] }
+  ],
+  "biomes": [
+    { "name": "rust", "hue": 186, "mix": 0.0 },
+    { "name": "hex",  "hue": 300, "mix": 0.55 },
+    { "name": "core", "hue": 42,  "mix": 0.55 }
+  ],
+  "testRoom": "train_L"
+}

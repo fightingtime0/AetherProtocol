@@ -24,7 +24,9 @@ function moveLocal(dt){
   if(touch.active){mx=touch.dx;my=touch.dy;}
   const ml=Math.hypot(mx,my); if(ml>1){mx/=ml;my/=ml;}
   const sp=myPos.spd*(myPos.dashing>0?BAL.player.dashSpeedMult:1);
+  const ox=myPos.x, oy=myPos.y;
   myPos.x+=mx*sp*dt; myPos.y+=my*sp*dt;
+  if(TM)tileSweep(myPos,ox,oy);   // Descent: sub-step so a fast dash can't tunnel a wall
   collideObstacles(myPos);
   myPos.dashT=Math.max(0,myPos.dashT-dt);
   myPos.dashing=Math.max(0,myPos.dashing-dt);
@@ -243,7 +245,7 @@ $('dashbtn').addEventListener('click',()=>{if(mode==='play')tryDash();});
 /* ---------------- training range ----------------
    A sandbox: no waves, no scoring, dummies that come back. The build is held
    here rather than in save, so nothing you try leaks into a real run. */
-const train={wpn:'bolt',lvl:1,rar:'c',slots:[],passives:[]};
+const train={wpn:'bolt',lvl:1,rar:'c',slots:[],passives:[],dg:false};
 const TRAIN_RARS=['c','r','e','l'];
 function renderTrainUI(){
   const wr=$('trWpnRow'); wr.innerHTML='';
@@ -268,6 +270,8 @@ function renderTrainUI(){
   mk('− LVL',()=>train.lvl=Math.max(1,train.lvl-1));
   mk('+ LVL',()=>train.lvl=Math.min(9,train.lvl+1));
   mk('RARITY ▸',()=>{ train.rar=TRAIN_RARS[(TRAIN_RARS.indexOf(train.rar)+1)%TRAIN_RARS.length]; });
+  // Descent tile-collision check: one hand-authored room instead of the field
+  mk('DUNGEON ROOM: '+(train.dg?'ON':'OFF'),()=>{ train.dg=!train.dg; });
   $('trLvlShow').textContent=train.lvl;
   $('trRarShow').textContent=RARS[train.rar].n;
   const pr=$('trPasRow'); pr.innerHTML='';
@@ -295,12 +299,14 @@ function renderTrainUI(){
 function startTraining(){
   saveName(); resetNet(); role='solo'; myId=0;
   show(null); $('hud').classList.remove('hidden');
-  newSim([{id:0,name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls}],{training:true});
+  newSim([{id:0,name:save.name,sprite:save.sprite,sprites:spriteFrames(),meta:save.meta,cls:save.cls}],{training:true,dgRoom:train.dg});
   const me=S.players.get(0);
   me.weapons=[{id:train.wpn,lvl:train.lvl,rar:train.rar,cd:0}];
   train.slots.forEach(id=>me.weapons.push({id,lvl:train.lvl,rar:train.rar,cd:0}));
   train.passives.forEach(pid=>{ const ps=PASSIVES.find(x=>x.id===pid); if(ps)ps.f(me); });
-  myPos={x:WW/2,y:WH/2,inv:0,dashT:0,dashing:0,spd:effSpeed(me),dcd:me.st.dashCd,dead:false};
+  const ent=(TM&&TM.rooms[0]&&TM.rooms[0].entry[0])||[WW/2,WH/2];
+  myPos={x:ent[0],y:ent[1],inv:0,dashT:0,dashing:0,spd:effSpeed(me),dcd:me.st.dashCd,dead:false};
+  me.x=myPos.x; me.y=myPos.y;
   V=null; mode='play'; musicStart();
   toast('Training range — press T to rebuild');
 }

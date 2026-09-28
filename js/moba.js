@@ -116,6 +116,7 @@ function newMobaSim(playersInfo){
   // over from the title screen and silently scale structure damage by up
   // to 3.4x. Pin it so siege balance means one thing.
   if(DIFFS[MOBA.difficulty||'normal'])diffKey=MOBA.difficulty||'normal';
+  TM=null;                 // a siege lane never carries a Descent tilemap
   obstacles=genMobaWorld();
   eidc=1; bidc=1;
   S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],pu:[],dnQ:[],obj:null,sx:[],

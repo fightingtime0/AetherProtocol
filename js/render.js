@@ -46,6 +46,10 @@ function drawImgC(img,x,y,flashAmt,scl=1){
 }
 function drawObstacle(o){
   const x=Math.round(o.x),y=Math.round(o.y),r=Math.round(o.r);
+  // Descent props: baked pixel art (biome-tinted), anchored at the base.
+  // Kept to Descent so the open-field modes look exactly as they did.
+  if(TM){ const s=dgSpr('prop_'+o.kind);
+    if(s){ ctx.drawImage(s.c,Math.round(x-s.w/2),Math.round(y+6-s.h)); return; } }
   if(o.kind==='crystal'){
     ctx.fillStyle=o.hue<.5?'#1e3d4a':'#3d1e40';
     ctx.beginPath();ctx.moveTo(x,y-r-3);ctx.lineTo(x+r,y);ctx.lineTo(x,y+r);ctx.lineTo(x-r,y);ctx.closePath();ctx.fill();
@@ -89,6 +93,8 @@ function render(){
   if(myPos.dead&&role!=='client'&&S){ for(const p of S.players.values())if(!p.dead){fx=p.x;fy=p.y;break;} }
   cam.x=clamp(fx-VW/2,0,WW-VW); cam.y=clamp(fy-VH/2,0,WH-VH);
   ctx.translate(-Math.round(cam.x)+(shk>0?rnd(-2,2):0), -Math.round(cam.y)+(shk>0?rnd(-2,2):0));
+  if(TM){ drawDungeonFloor(); drawDungeonDynamic(); }
+  else{
   // floor grid + border
   ctx.strokeStyle='rgba(42,51,82,.45)';ctx.lineWidth=1;
   const gx0=Math.floor(cam.x/32)*32, gy0=Math.floor(cam.y/32)*32;
@@ -99,6 +105,7 @@ function render(){
   ctx.fillStyle='rgba(78,240,232,.09)';
   for(let i=0;i<40;i++){const rx=(i*337)%WW,ry=(i*211)%WH;
     if(rx>cam.x-4&&rx<cam.x+VW+4&&ry>cam.y-4&&ry<cam.y+VH+4)ctx.fillRect(rx,ry,3,3);}
+  }
   if(mode!=='play'||(!S&&!V)){ctx.restore();return;}
   // gather draw data
   const isHost=role!=='client';
@@ -504,6 +511,107 @@ function render(){
   drawMinimap(en,players,isHost);
 }
 function vis(x,y,pad){return x>cam.x-pad&&x<cam.x+VW+pad&&y>cam.y-pad&&y<cam.y+VH+pad;}
+
+/* ---------------- Descent floor rendering ----------------
+   The static floor (panels, walls, pits, hazard bases, decor) is baked
+   lazily into 256×256 chunk canvases the first time each is on screen and
+   cached per floor; only the few animated things (doors, hazard pulse, the
+   exit hatch) are drawn every frame. */
+const DG_CHUNK=16;               // tiles per chunk side (16×16 px tiles → 256 px)
+let DGC={key:'',map:new Map()};
+function dgSpr(id){ return (TM&&SPRC[id+'_b'+TM.biome])||SPRC[id]; }
+function dgTileHash(x,y){
+  let h=Math.imul(x|0,374761393)^Math.imul(y|0,668265263)^Math.imul(TM.seed|0,2654435761);
+  h=Math.imul(h^(h>>>13),1274126177);
+  return ((h^(h>>>16))>>>0)/4294967296;
+}
+function dgFloorish(v){ return v===T_FLOOR||v===T_DOOR||v===T_DOORX||v===T_HAZ; }
+function dgBakeChunk(cx,cy){
+  const ts=TM.ts, N=DG_CHUNK, S0=N*ts;
+  const oc=document.createElement('canvas'); oc.width=S0; oc.height=S0;
+  const o=oc.getContext('2d'); o.imageSmoothingEnabled=false;
+  const put=(id,x,y)=>{ const s=dgSpr(id); if(s)o.drawImage(s.c,x,y); };
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const tx=cx*N+i, ty=cy*N+j, v=tileAtT(tx,ty), x=i*ts, y=j*ts;
+    if(v===T_VOID){ o.fillStyle='#070910'; o.fillRect(x,y,ts,ts); continue; }
+    if(v===T_WALL){
+      put('wall_top',x,y);
+      // 1px lit/shadow edges wherever the block borders walkable floor
+      const up=tileAtT(tx,ty-1), dn=tileAtT(tx,ty+1), lf=tileAtT(tx-1,ty), rt=tileAtT(tx+1,ty);
+      if(dgFloorish(up)||up===T_PIT){ o.fillStyle='#6b7396'; o.fillRect(x,y,ts,1); }
+      if(dgFloorish(lf)||lf===T_PIT){ o.fillStyle='#39415f'; o.fillRect(x,y,1,ts); }
+      if(dgFloorish(rt)||rt===T_PIT){ o.fillStyle='#0b0e1a'; o.fillRect(x+ts-1,y,1,ts); }
+      if(dgFloorish(dn)||dn===T_PIT){ o.fillStyle='#0b0e1a'; o.fillRect(x,y+ts-1,ts,1); }
+      continue;
+    }
+    if(v===T_PIT){
+      o.fillStyle='#05070d'; o.fillRect(x,y,ts,ts);
+      if(tileAtT(tx,ty-1)!==T_PIT)put('pit_edge',x,y);
+      continue;
+    }
+    // walkable: floor panel variant (deterministic per tile), hazard grate on top
+    const hsh=dgTileHash(tx,ty);
+    const fid=hsh<0.01?'floor_rune':hsh<0.05?'floor_crack':hsh<0.40?'floor_a':hsh<0.70?'floor_b':'floor_c';
+    put(fid,x,y);
+    if(v===T_HAZ)put('hazard',x,y);
+    // 2.5D: a wall above casts its face into the top of this tile
+    if(tileAtT(tx,ty-1)===T_WALL)put('wall_face',x,y);
+  }
+  // decor sprites: base-anchored on their tile, clipped by the chunk canvas
+  const x0=cx*S0, y0=cy*S0;
+  for(const rm of TM.rooms){
+    if(rm.x>x0+S0||rm.x+rm.w<x0||rm.y>y0+S0||rm.y+rm.h<y0)continue;
+    for(const d of rm.decor){ const s=dgSpr('prop_'+d.kind); if(!s)continue;
+      o.drawImage(s.c,Math.round(d.x-x0-s.w/2),Math.round(d.y-y0+ts/2-s.h)); }
+  }
+  return oc;
+}
+function drawDungeonFloor(){
+  const key=TM.seed+':'+TM.floor+':'+TM.w+'x'+TM.h+':'+TM.biome+(TM.test?':t':'');
+  if(DGC.key!==key)DGC={key,map:new Map()};    // floor change drops the cache
+  const S0=DG_CHUNK*TM.ts;
+  const cx0=Math.max(0,Math.floor(cam.x/S0)), cy0=Math.max(0,Math.floor(cam.y/S0));
+  const cx1=Math.floor((cam.x+VW)/S0), cy1=Math.floor((cam.y+VH)/S0);
+  ctx.imageSmoothingEnabled=false;
+  for(let cy=cy0;cy<=cy1;cy++)for(let cx=cx0;cx<=cx1;cx++){
+    if(cx*DG_CHUNK>=TM.w||cy*DG_CHUNK>=TM.h)continue;
+    const k=cx+','+cy;
+    let c=DGC.map.get(k);
+    if(!c){ c=dgBakeChunk(cx,cy); DGC.map.set(k,c); }
+    ctx.drawImage(c,cx*S0,cy*S0);
+  }
+}
+/* Per-frame floor extras: door states, hazard glow, exit hatch. */
+function drawDungeonDynamic(){
+  const ts=TM.ts, t=now();
+  // doors — open: a dim threshold plate; closed: animated cyan energy bars
+  for(const d of TM.doors){
+    for(const idx of d.tiles){
+      const tx=idx%TM.w, ty=(idx/TM.w)|0, x=tx*ts, y=ty*ts;
+      if(!vis(x+ts/2,y+ts/2,ts))continue;
+      if(TM.t[idx]===T_DOOR){ const s=dgSpr('door_open'); if(s){ctx.globalAlpha=.8;ctx.drawImage(s.c,x,y);ctx.globalAlpha=1;} }
+      else{
+        ctx.fillStyle='#0b0e1a'; ctx.fillRect(x,y,ts,ts);
+        const vert=d.dir==='v';                 // bars run across the doorway
+        for(let k=0;k<4;k++){
+          const ph=(Math.sin(t/90+k*1.7+idx)*.5+.5);
+          ctx.globalAlpha=.45+ph*.55; ctx.fillStyle=k%2?'#4ef0e8':'#e8ecff';
+          if(vert)ctx.fillRect(x+2+k*4,y,1,ts); else ctx.fillRect(x,y+2+k*4,ts,1);
+        }
+        ctx.globalAlpha=.25; ctx.fillStyle='#4ef0e8'; ctx.fillRect(x,y,ts,ts); ctx.globalAlpha=1;
+      }
+    }
+  }
+  // hazard grates pulse (only tiles on screen are visited)
+  const tx0=Math.max(0,Math.floor(cam.x/ts)), ty0=Math.max(0,Math.floor(cam.y/ts));
+  const tx1=Math.min(TM.w-1,Math.floor((cam.x+VW)/ts)), ty1=Math.min(TM.h-1,Math.floor((cam.y+VH)/ts));
+  const pulse=.10+.10*(Math.sin(t/260)*.5+.5);
+  ctx.fillStyle='#ff5c47';
+  for(let ty=ty0;ty<=ty1;ty++)for(let tx=tx0;tx<=tx1;tx++)
+    if(TM.t[ty*TM.w+tx]===T_HAZ){ ctx.globalAlpha=pulse; ctx.fillRect(tx*ts+1,ty*ts+1,ts-2,ts-2); }
+  ctx.globalAlpha=1;
+  if(typeof drawDungeonHatch==='function')drawDungeonHatch();
+}
 function drawMinimap(en,players,isHost){
   const mw=64,mh=36,mx=VW-mw-6,my=6;
   ctx.globalAlpha=.75;

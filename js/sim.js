@@ -82,7 +82,11 @@ function respawnPersistent(p){
   S.players.set(p.id,np);
 }
 function newSim(playersInfo,opts){
+  TM=null;                 // open-field modes never carry a Descent tilemap
   obstacles=genWorld();
+  // Training "Dungeon room" toggle: one hand-authored room instead of the
+  // open field, for checking tile collision by hand (see dgTestRoom)
+  if(opts&&opts.dgRoom&&typeof dgTestRoom==='function')dgTestRoom();
   eidc=1; bidc=1;
   S={players:new Map(),en:[],eb:[],pb:[],it:[],fx:[],dr:[],zn:[],mk:[],ar:[],pu:[],dnQ:[],obj:null,sx:[],
      wave:0,score:0,t:0,waveT:0,
@@ -115,6 +119,9 @@ function trainingSetup(){
   trainingRoamer();
   trainingLaserBoss();
   trainingChargerBoss();
+  // dungeon-room toggle: the open-field layout above is proportional to the
+  // world, so pull anything that landed in a wall or the void into the room
+  if(TM&&TM.rooms[0])for(const e of S.en){ dgContain(e,TM.rooms[0]); e.homeX=e.x; e.homeY=e.y; }
 }
 function trainingDummy(i){
   const a=i/6*TAU, R=Math.min(WW,WH)*0.28;

@@ -169,7 +169,9 @@ function nearestPlayer(e){
 function enemyAct(e,dt){
   // nearestFoe() is identical to nearestPlayer() outside a Nexus Siege
   // match, so every existing enemy behaves exactly as it did before.
+  if(e.ai==='prop')return;            // Descent crates/barrels: inert until broken
   const p=nearestFoe(e); if(!p)return;
+  const ox=e.x, oy=e.y;                // Descent: for the wall sub-step at the end
   const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1,aim=Math.atan2(dy,dx);
   const sm=e.slowT>0?0.45:1; e.slowT=Math.max(0,e.slowT-dt);
   e.cd-=dt;
@@ -657,5 +659,10 @@ function enemyAct(e,dt){
   }
   // The mothership is far larger than the cover scattered around the lane and
   // would pin itself on a rock mid-sweep; it simply wades through.
-  if((e.spd>0||e.st===2)&&!e.wild) collideObstacles(e);
+  if((e.spd>0||e.st===2)&&!e.wild){
+    // Descent: a fast mover (serpent/charge dash) is walked through in ≤12 px
+    // hops so it can't tunnel a wall; a blink (>40 px) is left to the unstick
+    if(TM&&Math.hypot(e.x-ox,e.y-oy)<=40)tileSweep(e,ox,oy);
+    collideObstacles(e);
+  }
 }

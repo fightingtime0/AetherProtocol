@@ -20,6 +20,9 @@ let ETI={};          // enemy id -> index
 let SPRC={};         // baked sprite canvases by id
 let BOSS_POOL=[];    // rotation boss ids, in enemies.json order
 let BOSS_MINION={};  // boss id -> unique minion id
+let DGN=null;        // dungeon.json — Descent tuning (floors, biomes, pacing)
+let ROOMT=[];        // rooms.json — hand-authored Descent room templates
+let TILES={};        // tiles.json — Descent tile/prop pixel art ({pal, rows} like sprites.json)
 
 const RARS={c:{n:'COMMON',max:3,dm:1},r:{n:'RARE',max:5,dm:1.15},e:{n:'EPIC',max:7,dm:1.35},l:{n:'LEGENDARY',max:9,dm:1.6}};
 
@@ -167,6 +170,25 @@ function bakeSprite(id,spr){
   render(id+'_t0',c=>teamTint(c,TH[0],0.45));
   render(id+'_t1',c=>teamTint(c,TH[1],0.45));
 }
+/* Descent tiles/props: one bake per biome, keyed id+'_b'+i, recoloured toward
+   the biome hue with the same teamTint() the team colours use. Biome 0 has
+   mix 0 (the current teal look); near-greys are left alone by teamTint, so
+   the dark panel bases stay put and only the accent pixels shift. The plain
+   id is baked too (biome-0 look) for anything drawn outside a floor. */
+function bakeTiles(tiles,biomes){
+  for(const id in tiles){
+    const spr=tiles[id], rows=spr.rows, h=rows.length, w=Math.max(...rows.map(r=>r.length));
+    const render=(key,recolor)=>{
+      const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
+      const o=oc.getContext('2d');
+      rows.forEach((r,y)=>{for(let x=0;x<r.length;x++){const c0=spr.pal[r[x]];
+        if(c0){o.fillStyle=recolor?recolor(c0):c0;o.fillRect(x,y,1,1);}}});
+      SPRC[key]={c:oc,w,h};
+    };
+    render(id,null);
+    (biomes||[]).forEach((B,i)=>render(id+'_b'+i,B.mix>0?(c=>teamTint(c,B.hue,B.mix)):null));
+  }
+}
 
 /* Human-readable summary of what a relic actually does — the stat blocks are
    data, so this renders them rather than duplicating the text by hand. */
@@ -202,14 +224,17 @@ async function fetchJson(path){
   return r.json();
 }
 async function loadData(){
-  const [bal,diffs,classes,weapons,enemies,passives,meta,sprites,moba]=await Promise.all([
+  const [bal,diffs,classes,weapons,enemies,passives,meta,sprites,moba,dungeon,rooms,tiles]=await Promise.all([
     fetchJson('data/balance.json'),   fetchJson('data/difficulties.json'),
     fetchJson('data/classes.json'),   fetchJson('data/weapons.json'),
     fetchJson('data/enemies.json'),   fetchJson('data/passives.json'),
     fetchJson('data/meta.json'),      fetchJson('data/sprites.json'),
     fetchJson('data/moba.json'),
+    fetchJson('data/dungeon.json'),   fetchJson('data/rooms.json'),
+    fetchJson('data/tiles.json'),
   ]);
   BAL=bal; DIFFS=diffs; MOBA=moba;
+  DGN=dungeon; ROOMT=rooms; TILES=tiles;
 
   /* weapons: attach behavior + compat aliases */
   WPN={};
@@ -249,11 +274,13 @@ async function loadData(){
     ETI[e.id]=i;
     e.k=e.id; e.sc=e.score; e.sh=e.shards;
     e.bn=e.bossName; e.opt=!!e.optional; e.uniq=!!e.unique; e.scl=e.scale||1;
-    bakeSprite(e.id,e.sprite);
+    // Descent props (crate/barrel) borrow their art from tiles.json via "spr"
+    if(e.sprite)bakeSprite(e.id,e.sprite);
     if(e.boss&&e.inRotation)BOSS_POOL.push(e.id);
     if(e.boss&&e.minion)BOSS_MINION[e.id]=e.minion;
   });
   for(const id in sprites) bakeSprite(id,sprites[id]);
+  bakeTiles(TILES,DGN&&DGN.biomes);
 
   if(!BOSS_POOL.length)throw new Error('no rotation bosses defined in enemies.json');
 }
