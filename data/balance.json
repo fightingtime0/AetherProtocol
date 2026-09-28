@@ -175,7 +175,7 @@
     "waveClearScore": 50,
     "sanctumShardMult": {
       "siege": 1.0,
-      "other": 0.45
+      "other": 0.45, "dungeon": 0.6
     }
   },
   "battleground": {

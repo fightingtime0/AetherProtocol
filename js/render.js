@@ -146,8 +146,8 @@ function render(){
   ctx.globalAlpha=1;
   // shard pads (Nexus Siege): reinforcements/amplifier/payload + weapon roll
   // + cache, and Descent's mend/cache/refine. kindCode order matches PAD_KINDS (moba.js).
-  const SHOP_ICON=['⚔','✚','☢','⚙','▣'],
-    SHOP_LABEL=['REINFORCE','AMPLIFY','PAYLOAD','ROLL WEAPON','OPEN CACHE'],
+  const SHOP_ICON=['⚔','✚','☢','⚙','▣','✚','▣','✦'],
+    SHOP_LABEL=['REINFORCE','AMPLIFY','PAYLOAD','ROLL WEAPON','OPEN CACHE','MEND 40%','CACHE','REFINE'],
     SHOP_COSTK=['creepCost','ampCost','payloadCost','wpnCost','chestCost'];
   const shops=isHost?(S.shops||0):(V?V.shp:0);
   if(shops)for(const o of shops){
@@ -156,6 +156,22 @@ function render(){
     const kindCode=isHost?PAD_KINDS.indexOf(o.k):o[3];
     const ocd=isHost?o.cd:o[4];
     if(!vis(ox,oy,34))continue;
+    if(kindCode>=SHOP_KINDS.length){ // Descent shop-room pad: own price, single use per player
+      const cost=isHost?o.cost:o[5], used=(isHost?o.used:o[6])||[], mine=used.includes(myId);
+      const R=(DGN&&DGN.shop&&DGN.shop.radius)||20, col=mine?'#6b7396':'#ffd35c';
+      const ped=dgSpr('prop_terminal');
+      ctx.globalAlpha=mine?.2:.35+.1*Math.sin(now()/300);
+      ctx.strokeStyle=col; ctx.lineWidth=1; ctx.beginPath();ctx.arc(ox,oy,R,0,TAU);ctx.stroke();
+      ctx.globalAlpha=mine?.5:1;
+      if(ped)ctx.drawImage(ped.c,Math.round(ox-ped.w/2),Math.round(oy-ped.h/2));
+      ctx.textAlign='center'; ctx.font='bold 9px monospace';
+      drawLabel(ox,oy-10,SHOP_ICON[kindCode],col);
+      ctx.font='bold 7px monospace';
+      drawLabel(ox,oy+R-2,SHOP_LABEL[kindCode],mine?'#8f9ac2':'#e8ecff');
+      drawLabel(ox,oy+R+6,mine?'USED':('◆ '+cost),mine?'#8f9ac2':'#ffd35c');
+      ctx.globalAlpha=1;
+      continue;
+    }
     const small=kindCode<=2; // reinf/amp/payload cluster tighter near each other
     const R=MOBA?(small?MOBA.shop.reinfRadius:MOBA.shop.radius):(small?15:22);
     ctx.globalAlpha=ocd>0?.15:.32;
@@ -319,7 +335,8 @@ function render(){
     const sprKey=ET[ti].spr||ET[ti].id;
     // azure/crimson recolor for team-owned entities — see bakeSprite() in data.js
     const spr=(e.team===0&&SPRC[sprKey+'_t0'])?SPRC[sprKey+'_t0']
-      :(e.team===1&&SPRC[sprKey+'_t1'])?SPRC[sprKey+'_t1']:SPRC[sprKey];
+      :(e.team===1&&SPRC[sprKey+'_t1'])?SPRC[sprKey+'_t1']
+      :(TM&&SPRC[sprKey+'_b'+TM.biome])?SPRC[sprKey+'_b'+TM.biome]:SPRC[sprKey];
     const telegraphing=isHost?(e.st===1):e.tel;
     if(telegraphing){ctx.globalAlpha=.35;ctx.fillStyle='#ff5c47';
       ctx.beginPath();ctx.arc(ex,ey,10*scl,0,TAU);ctx.fill();ctx.globalAlpha=1;}
@@ -613,6 +630,7 @@ function drawDungeonDynamic(){
   if(typeof drawDungeonHatch==='function')drawDungeonHatch();
 }
 function drawMinimap(en,players,isHost){
+  if(TM&&!TM.test){ drawDungeonMinimap(players,isHost); return; }
   const mw=64,mh=36,mx=VW-mw-6,my=6;
   ctx.globalAlpha=.75;
   ctx.fillStyle='#060810';ctx.fillRect(mx,my,mw,mh);
@@ -629,6 +647,44 @@ function drawMinimap(en,players,isHost){
   ctx.strokeStyle='rgba(107,115,150,.6)';
   ctx.strokeRect(mx+cam.x*sx,my+cam.y*sy,VW*sx,VH*sy);
   ctx.globalAlpha=1;
+}
+
+/* Descent minimap: rooms you've entered (filled) and their neighbours
+   (outlined), the sealed room highlighted, the boss room in red once seen,
+   treasure/shop marks, player dots. Discovery is local — each client tracks
+   where it and its allies have stood; the host also has S.dg.disc. */
+function drawDungeonMinimap(players,isHost){
+  const mw=112, mh=Math.round(mw*TM.h/TM.w), mx=VW-mw-6, my=6;
+  const sx=mw/(TM.w*TM.ts), sy=mh/(TM.h*TM.ts);
+  let disc, active;
+  if(isHost&&S&&S.dg){ disc=S.dg.disc; active=S.dg.room; }
+  else{ disc=V?V.dgDisc:new Set(); active=V&&V.dg?V.dg[0]:-1;
+    for(const p of players){ const px=p.id===myId?myPos.x:p.dx, py=p.id===myId?myPos.y:p.dy;
+      const ri=dgRoomAt(px,py); if(ri>=0)disc.add(ri); }
+    if(V&&V.dg&&V.dg[0]>=0)disc.add(V.dg[0]); }
+  disc.add(TM.start);
+  const near=new Set(); for(const i of disc)for(const n of TM.rooms[i].nb)near.add(n);
+  ctx.globalAlpha=.8; ctx.fillStyle='#060810'; ctx.fillRect(mx,my,mw,mh);
+  ctx.strokeStyle='#2a3352'; ctx.strokeRect(mx+.5,my+.5,mw-1,mh-1);
+  for(const rm of TM.rooms){
+    const seen=disc.has(rm.i); if(!seen&&!near.has(rm.i))continue;
+    const rx=mx+rm.x*sx, ry=my+rm.y*sy, rw=rm.w*sx, rh=rm.h*sy;
+    const col=rm.type==='boss'?'#ff5c47':rm.type==='treasure'?'#ffd35c':rm.type==='shop'?'#ff4fd8':'#4ef0e8';
+    if(seen){ ctx.globalAlpha=.35; ctx.fillStyle=rm.type==='boss'?'#5a1d18':'#1a2440'; ctx.fillRect(rx+1,ry+1,rw-2,rh-2); }
+    ctx.globalAlpha=seen?.9:.45; ctx.strokeStyle=(seen||rm.type==='boss')?col:'#39415f';
+    if(!seen&&rm.type!=='boss')ctx.strokeStyle='#39415f';
+    ctx.strokeRect(Math.round(rx)+1.5,Math.round(ry)+1.5,Math.max(1,Math.round(rw)-3),Math.max(1,Math.round(rh)-3));
+    if(seen&&(rm.type==='treasure'||rm.type==='shop')){ ctx.fillStyle=col; ctx.globalAlpha=1;
+      ctx.fillRect(Math.round(rx+rw/2)-1,Math.round(ry+rh/2)-1,3,3); }
+  }
+  if(active>=0&&TM.rooms[active]){ const rm=TM.rooms[active];
+    ctx.globalAlpha=.6+.4*Math.sin(now()/200); ctx.strokeStyle='#ffd35c';
+    ctx.strokeRect(Math.round(mx+rm.x*sx)+.5,Math.round(my+rm.y*sy)+.5,Math.round(rm.w*sx),Math.round(rm.h*sy)); }
+  ctx.globalAlpha=1;
+  for(const p of players){ if(p.dead)continue;
+    const px=p.id===myId?myPos.x:(isHost?p.x:p.dx), py=p.id===myId?myPos.y:(isHost?p.y:p.dy);
+    ctx.fillStyle=p.id===myId?'#ffd35c':'#4ef0e8';
+    ctx.fillRect(mx+Math.round(px*sx)-1,my+Math.round(py*sy)-1,2,2); }
 }
 
 /* ---------------- HUD ---------------- */
@@ -660,7 +716,9 @@ function updateHUD(){
   // level instead and the XP bar appears under the T-charge bar.
   const siege=(role!=='client'?!!(S&&S.moba):!!(V&&V.mb));
   $('xpwrap').style.display=siege?'flex':'none';
-  $('hWaveLabel').textContent=siege?'LEVEL':'WAVE';
+  // Descent: the wave slot reads floor and depth ("F1 · DEPTH 7")
+  const dgv=(role!=='client')?(S&&S.dg?[S.dg.floor,S.dg.depth]:null):(V&&V.dg?[V.dg[3],V.dg[2]]:null);
+  $('hWaveLabel').textContent=siege?'LEVEL':dgv?('F'+(dgv[0]+1)+' · DEPTH'):'WAVE';
   if(siege&&me){
     const lv=me.lvl||1;
     const need=(role!=='client')?xpNeeded(lv):(me.xpNeed||0);
@@ -668,7 +726,7 @@ function updateHUD(){
     $('xpbar').style.width=pct+'%';
     $('hWave').textContent=lv;
     $('xpTxt').textContent=Math.round(pct)+'% XP · LV '+lv;
-  }else $('hWave').textContent=wave;
+  }else $('hWave').textContent=dgv?dgv[1]:wave;
   $('hScore').textContent=score; $('hShards').textContent=shards;
   // upgrade readout — what the picked cards add up to
   const ups=myUpgrades||[];

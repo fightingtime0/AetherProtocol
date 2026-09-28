@@ -1164,5 +1164,7 @@
         ".121."
       ]
     }
-  }
+  },
+  {"_comment": "DESCENT destructible prop — spawned on room activation from an X in rooms.json. ai 'prop' is inert; optional so it never blocks a room clear; auto-aim ignores it. Loot on death: dungeon.json crate.", "id": "crate", "ai": "prop", "prop": true, "optional": true, "spr": "prop_crate", "hp": 30, "spd": 0, "r": 5, "score": 2, "shards": 0},
+  {"_comment": "DESCENT explosive barrel — an O in rooms.json. Blast (dungeon.json barrel) hits enemies AND players and chains into other barrels.", "id": "barrel", "ai": "prop", "prop": true, "optional": true, "spr": "prop_barrel", "hp": 18, "spd": 0, "r": 4, "score": 2, "shards": 0}
 ]
