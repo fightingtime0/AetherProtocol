@@ -1,4 +1,6 @@
 {
+  "_disabledStats": "Stats listed in disabledStats are switched off everywhere (data.js): applyStats() ignores them, descriptions drop them, and relics/Sanctum rows that ONLY grant them are removed from the pools. The numbers stay in classes/meta/passives JSON — delete the id from this list to bring the stat back.",
+  "disabledStats": ["regen"],
   "player": {
     "hp": 100,
     "speed": 66,

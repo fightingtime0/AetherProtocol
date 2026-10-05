@@ -52,9 +52,14 @@ const STAT_KIND={
   tRchM:'mult', droneHpM:'mult', dmgTakenM:'mult', costM:'mult'
 };
 const P_LEVEL=new Set(['maxhp','armor','shieldMax','tMax']);
+/* balance.json disabledStats — e.g. natural HP regen is off for Descent's
+   pacing. Kept as a switch rather than deleting the numbers from the data. */
+let STAT_OFF=new Set();
+const statOn=k=>!STAT_OFF.has(k);
 function applyStats(p,stats,ranks=1){
   if(!stats||ranks<=0)return;
   for(const k in stats){
+    if(!statOn(k))continue;
     const v=stats[k], kind=STAT_KIND[k];
     if(!kind){ console.warn('unknown stat',k); continue; }
     const tgt=P_LEVEL.has(k)?p:p.st;
@@ -92,7 +97,7 @@ function pct(v){return (v>=0?'+':'−')+Math.round(Math.abs(v)*100)+'%';}
 function pctM(v){return (v>=1?'+':'−')+Math.round(Math.abs(v-1)*100)+'%';}
 function genStatDesc(stats){
   const parts=[];
-  for(const k in stats||{}){ const f=STAT_LABEL[k]; if(f)parts.push(f(stats[k])); }
+  for(const k in stats||{}){ if(!statOn(k))continue; const f=STAT_LABEL[k]; if(f)parts.push(f(stats[k])); }
   return parts.join(', ');
 }
 function genClassDesc(c){
@@ -246,6 +251,10 @@ async function loadData(){
   for(const k in (status||{})){ if(k[0]==='_')continue; STATUS[k]=status[k]; STATUS_IDS.push(k); }
   HUDC=hud||{};
   BAL=bal; DIFFS=diffs; MOBA=moba;
+  STAT_OFF=new Set(bal.disabledStats||[]);
+  // a relic / Sanctum row that only grants switched-off stats would be a dead pick
+  const live=e=>!e.stats||Object.keys(e.stats).length===0||Object.keys(e.stats).some(statOn)||e.heal||e.special;
+
   DGN=dungeon; ROOMT=rooms; TILES=tiles;
 
   /* weapons: attach behavior + compat aliases */
@@ -266,7 +275,7 @@ async function loadData(){
   /* passives: desc auto-generated from stats, or given verbatim for "special"
      entries whose behavior can't be expressed as a plain stat (see SPECIAL_PASSIVES
      in sim.js) — those set "desc" directly in passives.json instead of "stats". */
-  PASSIVES=passives;
+  PASSIVES=passives.filter(live);
   for(const ps of PASSIVES){
     ps.g=ps.glyph; ps.n=ps.name;
     ps.d=(ps.mp?'CO-OP · ':'')+(ps.desc||(genStatDesc(ps.stats)+(ps.heal?(', heal '+ps.heal):'')));
@@ -276,7 +285,7 @@ async function loadData(){
   }
 
   /* meta shop: desc auto-generated from stats */
-  META=meta;
+  META=meta.filter(live);
   for(const m of META) m.desc=genStatDesc(m.stats)+' per rank';
 
   /* enemies: registry + sprites + boss rotation + minion links */
