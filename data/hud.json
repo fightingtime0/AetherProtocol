@@ -1,0 +1,32 @@
+{
+  "_comment": "Health-bar feel (hudfx.js + render.js). Colours are placeholders until the theme pass — every number and colour here is safe to retune. Fractions are of max HP.",
+  "hpBar": {
+    "colors": [
+      { "above": 0.6, "from": "#3fd17a", "to": "#7cff6b" },
+      { "above": 0.3, "from": "#ff9d3c", "to": "#ffd35c" },
+      { "above": 0.0, "from": "#c2183a", "to": "#ff5c47" }
+    ],
+    "ghostColor": "#fff4e0",
+    "healColor": "#7cff6b",
+    "drainDelay": 0.4,
+    "drainRate": 0.55,
+    "drainAccel": 2.2,
+    "healEaseSec": 0.45,
+    "healBurstMin": 0.02,
+    "chunkMin": 0.04,
+    "chunkSec": 0.65,
+    "shakePx": 6,
+    "shakeDecay": 9,
+    "flashSec": 0.2,
+    "regenWindowSec": 0.6,
+    "lowHp": 0.3,
+    "criticalHp": 0.15,
+    "maxhpScaleMin": 0.6,
+    "maxhpScaleMax": 1.6
+  },
+  "shieldBar": { "drainDelay": 0.25, "drainRate": 0.9 },
+  "bossBar":   { "drainDelay": 0.5,  "drainRate": 0.35, "chunkMin": 0.015, "shakePx": 4 },
+  "worldBars": { "drainDelay": 0.3,  "drainRate": 0.8, "flashSec": 0.12, "allyBars": true },
+  "vignette":  { "lowHp": 0.3, "alpha": 0.42, "pulseMs": 520 },
+  "sprite":    { "hurtFlashSec": 0.12, "healTintSec": 0.35 }
+}

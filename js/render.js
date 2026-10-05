@@ -84,15 +84,18 @@ function drawItem(it){
 }
 
 function render(){
+  hfxTick();
   ctx.save();
   ctx.fillStyle='#0b0e1a'; ctx.fillRect(0,0,VW,VH);
   const shk=(role!=='client'&&S)?S.shake:0;
+  // HUD-driven kick (big hits to YOUR bar) — works on clients too, where S.shake doesn't exist
+  const hk=mode==='play'?WorldFx.camShake():0;
   // camera on own player (or ally if dead)
   let fx=myPos.x, fy=myPos.y;
   if(myPos.dead&&V){ for(const p of V.players.values())if(!p.dead){fx=p.dx;fy=p.dy;break;} }
   if(myPos.dead&&role!=='client'&&S){ for(const p of S.players.values())if(!p.dead){fx=p.x;fy=p.y;break;} }
   cam.x=clamp(fx-VW/2,0,WW-VW); cam.y=clamp(fy-VH/2,0,WH-VH);
-  ctx.translate(-Math.round(cam.x)+(shk>0?rnd(-2,2):0), -Math.round(cam.y)+(shk>0?rnd(-2,2):0));
+  ctx.translate(-Math.round(cam.x)+(shk>0?rnd(-2,2):0)+Math.round(rnd(-hk,hk)), -Math.round(cam.y)+(shk>0?rnd(-2,2):0)+Math.round(rnd(-hk,hk)*.7));
   if(TM){ drawDungeonFloor(); drawDungeonDynamic(); }
   else{
   // floor grid + border
@@ -340,7 +343,8 @@ function render(){
     const telegraphing=isHost?(e.st===1):e.tel;
     if(telegraphing){ctx.globalAlpha=.35;ctx.fillStyle='#ff5c47';
       ctx.beginPath();ctx.arc(ex,ey,10*scl,0,TAU);ctx.fill();ctx.globalAlpha=1;}
-    drawImgC(spr.c,ex,ey,(isHost?e.flash>0:e.flash)?1:0,scl);
+    drawImgC(spr.c,ex,ey,0,scl);
+    if(isHost?e.flash>0:e.flash)WorldFx.drawSil(spr.c,ex,ey,'#ffffff',.9,scl); // hit flash: silhouette, not a box
     if(e.shielded){ // multi-part boss core, guarded while a pylon still lives
       ctx.globalAlpha=.55+Math.sin(now()/140)*.15; ctx.strokeStyle='#4ef0e8'; ctx.lineWidth=1;
       ctx.beginPath();ctx.arc(ex,ey,14*scl,0,TAU);ctx.stroke(); ctx.globalAlpha=1; ctx.lineWidth=1;
@@ -369,11 +373,10 @@ function render(){
     // a glance); everything else only shows one once it has been damaged.
     const isObjective=(e.team!==undefined&&e.team>=0);
     let barY=Math.round(ey-spr.h*scl/2-4);
-    if(hpp<1||isObjective){const bw=(ET[ti].boss?26:ET[ti].mini?18:10)*Math.max(1,scl*.8);
-      ctx.fillStyle='#060810';ctx.fillRect(Math.round(ex-bw/2),barY,bw,2);
-      ctx.fillStyle=(e.team!==undefined&&e.team>=0)?teamColor(e.team)
-        :ET[ti].boss?'#ff4fd8':ET[ti].opt?'#4ef0e8':'#7cff6b';
-      ctx.fillRect(Math.round(ex-bw/2),barY,Math.round(bw*hpp),2);
+    if(hpp<1||isObjective){const bw=Math.round((ET[ti].boss?26:ET[ti].mini?18:10)*Math.max(1,scl*.8));
+      // drain ghost trails the fill — see WorldFx.bar() in hudfx.js
+      WorldFx.bar(e,ex-bw/2,barY,bw,2,hpp,(e.team!==undefined&&e.team>=0)?teamColor(e.team)
+        :ET[ti].boss?'#ff4fd8':ET[ti].opt?'#4ef0e8':'#7cff6b');
       barY-=4;}
     // hive growth: how close the mothership is to rooting into a third
     // nexus — rises with time, knocked back by chip damage. Banded rather
@@ -415,6 +418,7 @@ function render(){
     ctx.fillStyle='#060810';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),8,1);
     ctx.fillStyle='#4ef0e8';ctx.fillRect(Math.round(dxx-4),Math.round(dyy-6),Math.round(8*clamp(hpp,0,1)),1);
   }
+  drawNpcs();
   // players
   if(!smoothPos)smoothPos={x:myPos.x,y:myPos.y};
   else{
@@ -436,6 +440,21 @@ function render(){
         const fr=r&&r.imgs?r.imgs:(r?[r.img]:null);
         img=fr?fr[animFrame(fr.length)]:spriteToCanvas(DEFAULT_MAGE); }
       drawImgC(img,px,py,0);
+      // hit flash / heal glow / damage-over-time tint, all as silhouettes
+      if(!p.dead){
+        const rx=WorldFx.react(p,p.hp,p.maxhp);
+        if(rx.hurt>0)WorldFx.drawSil(img,px,py,'#ffffff',rx.hurt*.9);
+        if(rx.heal>0)WorldFx.drawSil(img,px,py,(HUDC.hpBar&&HUDC.hpBar.healColor)||'#7cff6b',rx.heal*.55);
+        if(rx.healAmt>=1)floatNums.push({x:px,y:py-10,v:'+'+Math.round(rx.healAmt),heal:1,t:now()});
+        const dot=(p.sx||[]).find(s=>STATUS[s.id]&&STATUS[s.id].hps<0);
+        if(dot)WorldFx.drawSil(img,px,py,STATUS[dot.id].color,.18+.14*Math.sin(now()/110));
+      }
+    }
+    if(!p.dead)WorldFx.status(px,py,p.sx);
+    // co-op: allies carry a tiny bar under their feet (yours is the HUD)
+    if(p.id!==myId&&!p.dead&&HUDC.worldBars&&HUDC.worldBars.allyBars!==false&&p.maxhp>0){
+      const fr=clamp(p.hp/p.maxhp,0,1), band=bandFor(fr,HUDC.hpBar&&HUDC.hpBar.colors);
+      WorldFx.bar(p,px-7,py+8,14,2,fr,band?band.to:'#7cff6b');
     }
     // orbiting fangs
     const orbN=p.orbN||0, sabN=p.sabN||0;
@@ -512,6 +531,7 @@ function render(){
     }
     ctx.globalAlpha=1;
   }
+  WorldFx.drawParts();
   // dash pip
   if(!myPos.dead){ctx.fillStyle=myPos.dashT<=0?'#ffd35c':'#39415f';
     ctx.fillRect(Math.round(myPos.x-1),Math.round(myPos.y+8),3,1);}
@@ -519,12 +539,14 @@ function render(){
   floatNums=floatNums.filter(n=>now()-n.t<750);
   ctx.textAlign='center'; ctx.font='bold 9px monospace';
   for(const n of floatNums){
+    if(n.v===0)continue;          // a DoT pop that hasn't added up to 1 HP yet
     const age=(now()-n.t)/750, fy2=n.y-age*14;
     ctx.globalAlpha=1-age;
-    drawLabel(n.x,fy2,n.v,n.hurt?'#ff5c47':'#ffe8a3');
+    drawLabel(n.x,fy2,n.v,n.heal?((HUDC.hpBar&&HUDC.hpBar.healColor)||'#7cff6b'):n.hurt?'#ff5c47':'#ffe8a3');
   }
   ctx.globalAlpha=1;
   ctx.restore();
+  { const me=players.find(q=>q.id===myId); if(me&&me.maxhp>0)WorldFx.vignette(me.hp/me.maxhp,me.dead); }
   drawMinimap(en,players,isHost);
 }
 function vis(x,y,pad){return x>cam.x-pad&&x<cam.x+VW+pad&&y>cam.y-pad&&y<cam.y+VH+pad;}
@@ -699,7 +721,7 @@ function updateHUD(){
   let me=null,shards=0,wave=1,score=0;
   if(role!=='client'&&S){me=S.players.get(myId);wave=S.wave;score=S.score;shards=me?me.shards:0;}
   else if(V){me=V.players.get(myId);wave=V.wave;score=V.score;shards=me?me.shards:0;}
-  if(me){$('hpbar').style.width=Math.max(0,me.hp/me.maxhp*100)+'%';
+  if(me){HpHud.update(me);   // drain/chunk/shake/flash/regen + status overlays — hudfx.js
     $('hpTxt').textContent=Math.max(0,Math.round(me.hp))+'/'+Math.round(me.maxhp)+' H';
     // t/tMax now ride the snapshot raw for both host and client, so this
     // needs no role branching any more — see net.js snap()/applySnap()
@@ -710,7 +732,7 @@ function updateHUD(){
     // shield bar only shows if you have any shield capacity
     const shMax=me.shieldMax||0;
     $('shRow').style.display=shMax>0?'flex':'none';
-    if(shMax>0){$('shbar').style.width=clamp((me.shield||0)/shMax*100,0,100)+'%';
+    if(shMax>0){ // bar width is driven by HpHud's shield BarFx
       $('shTxt').textContent=Math.round(me.shield||0)+'/'+Math.round(shMax)+' S';}
   }
   // Nexus Siege: the wave counter is meaningless, so the slot shows your
@@ -765,7 +787,8 @@ function updateHUD(){
     }
   }
   $('bossWrap').classList.toggle('hidden',!hasBoss);
-  if(hasBoss){$('bossName').textContent=bnm;$('bossBar').style.width=Math.max(0,bhp*100)+'%';}
+  if(hasBoss)$('bossName').textContent=bnm;
+  HpHud.updateBoss(clamp(bhp,0,1),hasBoss,bnm.replace(' ⛨ SHIELDED',''));
   // objective banner
   const ov=getObjView();
   if(ov){const el=$('objBanner');
@@ -820,4 +843,41 @@ function drawDungeonHatch(){
   ctx.globalAlpha=1;
   ctx.font='bold 7px monospace'; ctx.textAlign='center';
   drawLabel(hx,hy+R+8,'▼ GATHER TO DESCEND','#4ef0e8');
+}
+
+/* ---------------- NPCs (dungeon.js npcList(), panels.js) ----------------
+   Drawn under the players: sprite with an idle bob and a soft shadow, a name
+   plate when you're close, the talk prompt for whichever one Panels.near
+   picked. In a merchant's room the $ plinths show the stock glyphs. */
+function drawNpcs(){
+  if(typeof npcList!=='function')return;
+  const list=npcList(); if(!list.length)return;
+  const t=now();
+  ctx.font='bold 8px monospace'; ctx.textAlign='center';
+  for(const n of list){
+    if(!vis(n.x,n.y,40))continue;
+    const def=npcDef(n.id); if(!def)continue;
+    // merchant's wares on the room's plinths
+    if(def.shop&&TM&&n.room>=0&&TM.rooms[n.room]){
+      const rm=TM.rooms[n.room], st=npcStock(n,npcFloor());
+      rm.shop.forEach((sp,i)=>{ const it=st[i]; if(!it)return;
+        ctx.fillStyle='#1a2440'; ctx.fillRect(Math.round(sp[0]-6),Math.round(sp[1]-2),12,6);
+        ctx.fillStyle='#2a3352'; ctx.fillRect(Math.round(sp[0]-6),Math.round(sp[1]-2),12,1);
+        const by=sp[1]-8+Math.sin(t/300+i)*1.5;
+        ctx.globalAlpha=it.locked?.35:1;
+        drawLabel(sp[0],by,it.glyph,it.locked?'#6b7396':def.color||'#ffd35c');
+        ctx.globalAlpha=1; });
+    }
+    const spr=SPRC['npc_'+n.id]; const bob=Math.round(Math.sin(t/420+n.x)*1);
+    ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(n.x,n.y+7,6,2,0,0,TAU); ctx.fill();
+    if(spr)drawImgC(spr.c,n.x,n.y+bob,0);
+    const near=typeof Panels!=='undefined'&&Panels.near===n;
+    const d=Math.hypot(myPos.x-n.x,myPos.y-n.y);
+    if(near||d<npcTalkRadius()*2.2){
+      ctx.globalAlpha=near?1:.6; drawLabel(n.x,n.y-12+bob,def.name,def.color||'#e8ecff'); ctx.globalAlpha=1; }
+    if(near&&!Panels.open){
+      const pulse=.6+.4*Math.sin(t/180);
+      ctx.globalAlpha=pulse; drawLabel(n.x,n.y-21+bob,isTouch?'▲ TALK':'[E] TALK','#ffd35c'); ctx.globalAlpha=1;
+    }
+  }
 }

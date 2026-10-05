@@ -34,7 +34,7 @@ function dgStampRoom(tm,room,tpl,mx,my){
   const tx0=room.cx*CW, ty0=room.cy*CH, tw=room.cw*CW, th=room.ch*CH;
   Object.assign(room,{tpl:tpl.id,mx:mx?1:0,my:my?1:0,tx:tx0,ty:ty0,tw,th,
     x:tx0*ts,y:ty0*ts,w:tw*ts,h:th*ts,
-    spawns:[],chests:[],shop:[],shrine:[],hatch:[],entry:[],solids:[],breakables:[],decor:[]});
+    spawns:[],chests:[],shop:[],shrine:[],hatch:[],entry:[],solids:[],breakables:[],decor:[],npcSpots:[]});
   const W=tw-2, H=th-2;
   for(let y=0;y<th;y++)for(let x=0;x<tw;x++){
     const tx=tx0+x, ty=ty0+y, idx=ty*tm.w+tx;
@@ -50,6 +50,7 @@ function dgStampRoom(tm,room,tpl,mx,my){
     else if(c==='$')room.shop.push([px,py]);
     else if(c==='H')room.hatch.push([px,py]);
     else if(c==='@')room.entry.push([px,py]);
+    else if(c==='N')room.npcSpots.push([px,py]);   // NPC stands here (npcs.json placements)
     else if(DG_SOLID_PROP[c])room.solids.push({kind:DG_SOLID_PROP[c],x:px,y:py});
     else if(DG_BREAK_PROP[c])room.breakables.push({kind:DG_BREAK_PROP[c],x:px,y:py});
     else if(DG_DECOR[c]){ room.decor.push({kind:DG_DECOR[c],x:px,y:py}); if(c==='A')room.shrine.push([px,py]); }
@@ -66,6 +67,7 @@ function dgObstacles(tm){
 /* Make `tm` the live map: TM, world size and obstacles all follow it.
    Used identically by host and clients. */
 function dgInstall(tm){
+  if(!tm.npcs)tm.npcs=tm.test?[]:dgPlaceNpcs(tm);
   TM=tm; WW=tm.w*tm.ts; WH=tm.h*tm.ts;
   obstacles=dgObstacles(tm);
   return tm;
@@ -629,6 +631,7 @@ function dgTreasure(rm){
 const DG_SHOP_KINDS=(typeof PAD_KINDS!=='undefined')?PAD_KINDS.slice(SHOP_KINDS.length):['mend','cache','refine'];
 function dgShopOpen(rm){
   const f=Math.min(S.dg.floor,2), SH=DGN.shop||{};
+  if(SH.mode==='npc')return;   // the room's merchant (npcs.json) sells instead — set "pads" to bring the pads back
   rm.shop.forEach((s,i)=>{
     const k=DG_SHOP_KINDS[i%DG_SHOP_KINDS.length], spec=SH[k]||{};
     const cost=Array.isArray(spec.cost)?spec.cost[Math.min(f,spec.cost.length-1)]:(spec.cost||50);
@@ -682,4 +685,112 @@ function dgAcceptIn(p,d){
     return false;
   }
   return true;
+}
+
+/* ============================================================
+   NPCs — placement, stock and purchases (host-authoritative)
+   SCAFFOLDING for the shop/dialog pass: the cast, lines and stock live in
+   data/npcs.json; the panels that show them are js/panels.js (browser only).
+   Placement is deterministic from the floor itself, so host and clients
+   derive the identical NPC list from {seed, floor} — nothing extra to sync.
+   An NPC instance: {uid, id, room, x, y}. uid embeds the floor, so the host's
+   per-run purchase ledger (S.npcBuys) never mixes up two floors' merchants.
+   ============================================================ */
+function npcDef(id){ return (NPCD&&NPCD.npcs&&NPCD.npcs[id])||null; }
+function npcTalkRadius(){ return (NPCD&&NPCD.talkRadius)||28; }
+/* nearest free (walkable, non-hazard) tile centre to (x,y) inside room rm */
+function dgFreeSpotNear(tm,rm,x,y){
+  const ts=tm.ts, tx0=Math.floor(x/ts), ty0=Math.floor(y/ts);
+  const ok=(tx,ty)=>{ if(tx<=rm.tx||ty<=rm.ty||tx>=rm.tx+rm.tw-1||ty>=rm.ty+rm.th-1)return false;
+    const v=tm.t[ty*tm.w+tx]; return v===T_FLOOR; };
+  const taken=[...rm.entry,...rm.shop,...rm.chests,...rm.hatch].map(m=>Math.floor(m[0]/ts)+','+Math.floor(m[1]/ts));
+  for(let r=0;r<=12;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+    const tx=tx0+dx, ty=ty0+dy;
+    if(ok(tx,ty)&&!taken.includes(tx+','+ty))return [(tx+.5)*ts,(ty+.5)*ts];
+  }
+  return [x,y];
+}
+function dgPlaceNpcs(tm){
+  const out=[], P=(NPCD&&NPCD.placements)||[];
+  for(const pl of P){
+    if(!npcDef(pl.npc))continue;
+    if(pl.floors&&!pl.floors.includes(tm.floor))continue;
+    for(const rm of tm.rooms){
+      if(rm.type!==pl.room)continue;
+      const sp=rm.npcSpots&&rm.npcSpots.length?rm.npcSpots[0]
+        :dgFreeSpotNear(tm,rm,rm.x+rm.w/2,rm.y+rm.h/2-(pl.room==='start'?tm.ts*3:0));
+      out.push({uid:'f'+tm.floor+':r'+rm.i+':'+pl.npc,id:pl.npc,room:rm.i,x:sp[0],y:sp[1]});
+    }
+  }
+  return out;
+}
+/* Training range: the merchant stands beside you so the panels can be tried
+   without a dungeon run. Host/solo only (Training never networks). */
+function npcTrainingSpawn(x,y){
+  if(!S||!npcDef('merchant'))return;
+  const n={uid:'train:merchant',id:'merchant',room:-1,x:x+56,y:y-24,r:4};
+  collideObstacles(n);
+  S.trainNpcs=[n];
+}
+/* Every NPC that exists right now, host or client. */
+function npcList(){
+  if(S&&S.training&&S.trainNpcs)return S.trainNpcs;
+  return (TM&&TM.npcs)||[];
+}
+function npcByUid(uid){ return npcList().find(n=>n.uid===uid)||null; }
+function npcFloor(){
+  if(S&&S.dg)return S.dg.floor;
+  if(V&&V.dg)return V.dg[3]||0;
+  return 0;
+}
+function npcItemCost(item,floor){
+  const c=item&&item.cost;
+  if(Array.isArray(c))return c[Math.min(Math.max(0,floor|0),c.length-1)]||0;
+  return c||0;
+}
+/* What the shop panel shows for one NPC: one row per stock slot. */
+function npcStock(npc,floor){
+  const def=npc&&npcDef(npc.id), st=(def&&def.shop&&def.shop.stock)||[];
+  return st.map((iid,slot)=>{ const it=(NPCD.items||{})[iid]||{name:iid,glyph:'?',locked:true};
+    return {slot,iid,name:it.name||iid,glyph:it.glyph||'?',desc:it.desc||'',cost:npcItemCost(it,floor),
+      limit:it.limit||0,locked:!!it.locked||!it.fx}; });
+}
+/* Item effects. Each returns the toast line. Add new fx kinds here. */
+const NPC_ITEM_FX={
+  mend:(p,it)=>{ const got=healPlayer(p,p.maxhp*(it.arg||0.4)); return p.name+' mended (+'+Math.round(got)+' HP)'; },
+  cache:(p,it,npc)=>{ S.it.push({k:2,x:npc.x,y:npc.y+30}); sfxE('chest'); return p.name+' bought a cache'; },
+  refine:(p)=>{ if(!p.pickOpts)startPick(p); return p.name+' refined their build'; },
+  status:(p,it)=>{ const st=applyStatus(p,it.arg); return st?(p.name+' gained '+((STATUS[it.arg]||{}).name||it.arg)):null; }
+};
+function npcBuysFor(uid,pid){
+  if(!S.npcBuys)S.npcBuys={};
+  const k=uid+'|'+pid;
+  return S.npcBuys[k]||(S.npcBuys[k]={});
+}
+/* Host: player p wants slot `slot` from NPC `uid`. Validates everything the
+   client could get wrong or fake (range, stock, limit, price) and applies it.
+   Returns {ok, m, own:[bought count per slot]} — the client panel renders it. */
+function npcBuy(p,uid,slot){
+  const npc=npcByUid(uid), def=npc&&npcDef(npc.id);
+  const own=()=>{ const b=npcBuysFor(uid,p.id); return ((def&&def.shop&&def.shop.stock)||[]).map((_,i)=>b[i]||0); };
+  if(!npc||!def||!def.shop)return {ok:false,m:'Nobody to trade with',own:[]};
+  if(p.dead)return {ok:false,m:'You are down',own:own()};
+  if(Math.hypot(p.x-npc.x,p.y-npc.y)>npcTalkRadius()*1.8)return {ok:false,m:'Too far away',own:own()};
+  const iid=def.shop.stock[slot], it=(NPCD.items||{})[iid];
+  if(!it||it.locked||!it.fx||!NPC_ITEM_FX[it.fx])return {ok:false,m:'Not for sale',own:own()};
+  const b=npcBuysFor(uid,p.id);
+  if(it.limit&&(b[slot]||0)>=it.limit)return {ok:false,m:'Sold out',own:own()};
+  const cost=npcItemCost(it,npcFloor());
+  if(p.shards<cost){ sfxE('denied'); return {ok:false,m:'Need ◆'+cost,own:own()}; }
+  const msg=NPC_ITEM_FX[it.fx](p,it,npc);
+  if(msg===null)return {ok:false,m:'Nothing happened',own:own()};
+  p.shards-=cost; b[slot]=(b[slot]||0)+1; sfxE('buy');
+  if(msg)toastAll(msg);
+  return {ok:true,m:it.name+' bought',own:own()};
+}
+/* Host: read-only ledger for one NPC (the panel asks on open). */
+function npcOwn(p,uid){
+  const npc=npcByUid(uid), def=npc&&npcDef(npc.id), b=npcBuysFor(uid,p.id);
+  return ((def&&def.shop&&def.shop.stock)||[]).map((_,i)=>b[i]||0);
 }

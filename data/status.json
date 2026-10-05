@@ -1,0 +1,11 @@
+{
+  "_comment": "Health-altering buffs/debuffs on players (sim.js applyStatus). Key order is the network code — append new ones at the END. Fields: type buff|debuff; hps = HP per second per stack (negative = damage over time, routed through hurt() as DoT so shields/armour rules match); dmgTakenM / healM multiply incoming damage / healing (strongest active wins per side, they don't stack); maxhpM scales max HP while active (the bonus is added on apply and removed exactly on expiry); dur seconds, refreshed on re-apply; maxStacks caps hps stacking. color/glyph drive the HUD chip, bar overlays and world particles (hudfx.js, render.js).",
+  "regen":    { "name": "Mending",   "glyph": "✚", "type": "buff",   "hps": 4,  "dur": 5,  "maxStacks": 3, "color": "#7cff6b", "desc": "Restores 4 HP/s per stack." },
+  "poison":   { "name": "Venom",     "glyph": "☣", "type": "debuff", "hps": -3, "dur": 4,  "maxStacks": 5, "color": "#a6ff3c", "desc": "Loses 3 HP/s per stack." },
+  "burn":     { "name": "Scorch",    "glyph": "♨", "type": "debuff", "hps": -6, "dur": 3,  "maxStacks": 3, "color": "#ff9d3c", "desc": "Loses 6 HP/s per stack." },
+  "fortify":  { "name": "Fortified", "glyph": "⛨", "type": "buff",   "dmgTakenM": 0.7,  "dur": 6,  "color": "#ffd35c", "desc": "Takes 30% less damage." },
+  "exposed":  { "name": "Exposed",   "glyph": "✖", "type": "debuff", "dmgTakenM": 1.35, "dur": 5,  "color": "#ff5c47", "desc": "Takes 35% more damage." },
+  "vigor":    { "name": "Vigor",     "glyph": "♥", "type": "buff",   "maxhpM": 1.25,    "dur": 10, "color": "#ff4fd8", "desc": "+25% max HP while it lasts." },
+  "wither":   { "name": "Wither",    "glyph": "☠", "type": "debuff", "maxhpM": 0.75,    "dur": 8,  "color": "#b34fff", "desc": "−25% max HP while it lasts." },
+  "grievous": { "name": "Grievous",  "glyph": "⊘", "type": "debuff", "healM": 0.35,     "dur": 5,  "color": "#98a1c6", "desc": "Healing is 65% weaker." }
+}

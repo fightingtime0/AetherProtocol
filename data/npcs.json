@@ -1,0 +1,73 @@
+{
+  "_comment": "NPCs, their dialog trees and shop stock (dungeon.js places/sells, panels.js shows). SCAFFOLDING: the cast, lines and stock are placeholders until the item pass. Placement: an 'N' in a room template marks the spot, else the room centre (nearest free floor). Dialog node: {text, choices:[{label, go:'node'} | {label, open:'shop'} | {label, close:true}]}. 'start' opens the first talk on a floor, 'repeat' (if present) every talk after. Stock rows point at items{}; item fx: mend | cache | refine | status (+ arg = status.json id) | null (display only). cost is per floor [F1,F2,F3]; limit = buys per player per NPC per floor; locked = shows as a sealed slot.",
+  "talkRadius": 28,
+  "placements": [
+    { "room": "shop",  "npc": "merchant" },
+    { "room": "start", "npc": "warden", "floors": [0] }
+  ],
+  "npcs": {
+    "merchant": {
+      "name": "VESSA", "title": "Rift Merchant", "color": "#ff4fd8",
+      "sprite": { "pal": { "a": "#1a2440", "b": "#3d1e40", "c": "#0b0e1a", "d": "#ff4fd8", "e": "#2a3352", "f": "#4a2a5c", "g": "#ffd35c", "h": "#4ef0e8" },
+        "rows": [
+          "....aaa....",
+          "...abbba...",
+          "..abbbbba..",
+          "..abcccba..",
+          "..abdcdba..",
+          "..abcccba..",
+          "...abbba...",
+          "..eeeeeee..",
+          ".eeffgffee.",
+          "hefffgfffeh",
+          ".effhghffe.",
+          ".eeffgffee.",
+          "..eefffee..",
+          "..ee...ee..",
+          "..aa...aa.."] },
+      "shop": { "title": "VESSA'S WARES", "stock": ["mend", "cache", "refine", "sealed", "sealed"] },
+      "dialog": {
+        "start":  { "text": "Ah — a live one. The rift drags all sorts down here, and most of it I sell back up. Shards only, no haggling.",
+          "choices": [ { "label": "Show me your wares", "open": "shop" }, { "label": "Who are you?", "go": "who" }, { "label": "Leave", "close": true } ] },
+        "repeat": { "text": "Back again? Good. The prices haven't moved.",
+          "choices": [ { "label": "Trade", "open": "shop" }, { "label": "Leave", "close": true } ] },
+        "who":    { "text": "Vessa. I keep a stall wherever the floor stops falling apart. Ask too many questions and the stall moves.",
+          "choices": [ { "label": "Fair enough. Let's trade", "open": "shop" }, { "label": "Back", "go": "start" } ] }
+      }
+    },
+    "warden": {
+      "name": "KEEPER-9", "title": "Descent Warden", "color": "#4ef0e8",
+      "sprite": { "pal": { "a": "#1a2440", "b": "#39415f", "c": "#4ef0e8", "d": "#e8ecff", "e": "#232b45", "f": "#6b7396" },
+        "rows": [
+          "...aaaaa...",
+          "..abbbbba..",
+          "..abcccba..",
+          "..abbbbba..",
+          "...abfba...",
+          ".aaeeeeeaa.",
+          "abfeeceefba",
+          "abfedcdefba",
+          "abfeeceefba",
+          ".a.eeeee.a.",
+          "...ebbbe...",
+          "...eb.be...",
+          "...eb.be...",
+          "..aab.baa..",
+          "..........."] },
+      "dialog": {
+        "start":  { "text": "Pilot. Three floors stand between you and the Aether Core. Rooms seal when you enter them — clear them to move on.",
+          "choices": [ { "label": "Anything else?", "go": "tips" }, { "label": "Understood", "close": true } ] },
+        "tips":   { "text": "Shops are marked magenta on your map. The merchant only takes shards, so pick them up. And don't stand on the red grates.",
+          "choices": [ { "label": "Back", "go": "start" }, { "label": "Thanks", "close": true } ] },
+        "repeat": { "text": "The descent awaits, pilot.",
+          "choices": [ { "label": "Leave", "close": true } ] }
+      }
+    }
+  },
+  "items": {
+    "mend":   { "name": "Mending Draught", "glyph": "✚", "fx": "mend",   "arg": 0.4, "cost": [40, 70, 110],  "limit": 1, "desc": "Restore 40% of your max HP on the spot." },
+    "cache":  { "name": "Sealed Cache",    "glyph": "▣", "fx": "cache",  "cost": [60, 100, 150], "limit": 1, "desc": "A locked supply cache. Drops at the merchant's feet." },
+    "refine": { "name": "Refinement",      "glyph": "✦", "fx": "refine", "cost": [80, 130, 190], "limit": 1, "desc": "Open an extra attunement pick for your build." },
+    "sealed": { "name": "Sealed Slot",     "glyph": "?", "fx": null,     "cost": [0],            "locked": true, "desc": "Stock not in yet." }
+  }
+}

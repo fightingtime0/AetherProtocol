@@ -15,7 +15,8 @@
 
 <div id="hud" class="hidden">
   <div>
-    <div class="barrow"><div id="hpwrap"><div id="hpbar"></div></div><span id="hpTxt" class="bartxt"></span></div>
+    <div class="barrow" id="hpRow"><div id="hpwrap"><div id="hpbar"></div></div><span id="hpTxt" class="bartxt"></span></div>
+    <div id="hpStatus"></div>
     <div class="barrow" id="shRow" style="display:none"><div class="rwrap" id="shwrap"><div id="shbar"></div></div><span id="shTxt" class="bartxt"></span></div>
     <div class="barrow"><div class="rwrap"><div id="tbar"></div></div><span id="tTxt" class="bartxt"></span></div>
     <div class="barrow" id="xpwrap" style="display:none"><div class="rwrap"><div id="xpbar"></div></div><span id="xpTxt" class="bartxt"></span></div>
@@ -54,6 +55,35 @@
 <div id="touchui">
   <div id="stickbase"></div><div id="sticknub"></div>
   <button id="dashbtn">DASH</button>
+  <button id="talkbtn">TALK</button>
+</div>
+
+<!-- NPC PANEL (panels.js): one frame, two views — dialog box and shop -->
+<div id="npcPanel" class="hidden">
+  <div class="npcHead">
+    <canvas id="npcPortrait" width="66" height="78"></canvas>
+    <div class="npcWho"><div id="npcName"></div><div id="npcTitle"></div></div>
+    <button id="npcClose" title="Leave (Esc)">✕</button>
+  </div>
+  <div id="npcDialog">
+    <div id="npcText"></div>
+    <div id="npcChoices"></div>
+  </div>
+  <div id="npcShop" class="hidden">
+    <div class="npcShopHead"><span id="npcShopTitle"></span><span class="mag2">◆ <b id="npcShards">0</b></span></div>
+    <div class="npcShopBody">
+      <div id="npcStock"></div>
+      <div class="npcDetail">
+        <div id="npcItGlyph"></div>
+        <div id="npcItName"></div>
+        <div id="npcItDesc"></div>
+        <div id="npcItCost"></div>
+        <button class="pxbtn prime" id="npcBuy">BUY</button>
+        <div id="npcMsg"></div>
+      </div>
+    </div>
+    <div class="npcFoot"><button class="chip" id="npcBack">← Talk</button><span>W/S choose · E buy · Esc back</span></div>
+  </div>
 </div>
 
 <!-- TITLE -->
@@ -230,6 +260,8 @@
 <script defer src="js/dungeon.js"></script>
 <script defer src="js/net.js"></script>
 <script defer src="js/render.js"></script>
+<script defer src="js/hudfx.js"></script>
+<script defer src="js/panels.js"></script>
 <script defer src="js/ui.js"></script>
 <script defer src="js/main.js"></script>
 </body>

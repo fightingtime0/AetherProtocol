@@ -15,7 +15,9 @@ Play solo or share a 4-letter room code with friends (co-op is peer-to-peer via 
 - **Nexus Siege** (lobby chip *NEXUS SIEGE*) — team-vs-team lane mode with bots, structures and a shard shop.
 - **Battleground** — the persistent 24/7 PvPvE server (`server/`), still the old open-field waves.
 - **Training range** — any weapon/level/rarity/relics against respawning dummies. The *DUNGEON ROOM* toggle
-  swaps the open field for one Descent room, for checking walls, pits and hazards by hand.
+  swaps the open field for one Descent room, for checking walls, pits and hazards by hand. The range also
+  has the merchant standing by (try the panels) and status hotkeys: **1–8** apply a status to yourself,
+  **0** clears them, **−** hurts you 18%, **=** heals 25%.
 
 ## Gameplay loop (Descent)
 
@@ -26,8 +28,11 @@ Play solo or share a 4-letter room code with friends (co-op is peer-to-peer via 
 3. **Clear it → Attune.** Doors open, downed allies revive, and each living player picks 1 of 3 cards: a new
    weapon, a weapon upgrade, or a relic. Every clear adds **depth**, which drives difficulty
    (`S.wave = depth × dungeon.json depthWaveMult`). Weapon slots grow to 2/3/4 at depth 3/8/16.
-4. **Side rooms:** treasure rooms hold chests; shop rooms have three pads — **Mend** (heal 40%), **Cache**
-   (a chest), **Refine** (an extra pick) — each usable once per player, paid in shards you then don't bank.
+4. **Side rooms:** treasure rooms hold chests; shop rooms hold **Vessa the Rift Merchant** — walk up, press
+   **E** (or tap **TALK**) to open her dialog, then her shop: **Mend** (heal 40%), **Cache** (a chest),
+   **Refine** (an extra pick), each once per player, paid in shards you then don't bank. Floor 1's start room
+   has a warden NPC with a few lines. *(Placeholder stock — the item pass is still to come. Set
+   `dungeon.json` `shop.mode` to `"pads"` to bring back the old walk-on pads.)*
    Crates drop loot; explosive barrels chain and hurt *everyone* nearby.
 5. **Boss room** at the end of each floor (floor 2's is a BIG boss, floor 3's is the Titan). Beat it and the
    **exit hatch** opens: gather on it for 2 seconds to descend. Beating the Titan completes the Descent.
@@ -89,6 +94,8 @@ js/
   dungeon.js        Descent: seeded floor generation, rooms/doors, encounters, flow fields (headless-safe)
   net.js            PeerJS co-op: lobby, snapshots, client view
   render.js         canvas renderer, minimap, HUD
+  hudfx.js          health-bar feel: drain ghost, damage chunks, shake, flash, regen shimmer, status overlays
+  panels.js         NPC dialog + shop panels (browser only)
   ui.js             screens, menus, character editor, input
   main.js           boot + game loop
 data/
@@ -103,6 +110,9 @@ data/
   dungeon.json      Descent tuning: floors, room mix, biomes, pacing, loot, shop prices
   rooms.json        Descent room templates (hand-authored ASCII, validated at load and in tests)
   tiles.json        Descent tile & prop pixel art ({pal, rows}), baked per biome
+  npcs.json         NPC cast, dialog trees, shop stock + items, placements
+  status.json       health-altering buffs/debuffs (regen, venom, scorch, fortify, exposed, vigor, wither, grievous)
+  hud.json          health-bar timings, threshold colours, vignette
 tools/
   dungeon-preview.html  render any seed/floor of Descent: rooms, doors, spawns, validator errors
   turn-test.html        TURN relay credential check

@@ -130,6 +130,22 @@ function logIcePath(c,label){
 }
 
 /* ---------------- snapshots ---------------- */
+/* Status effects ride the player row as a flat [code, tenths left, stacks,
+   tenths total, ...] list (0 when none) — code = index into STATUS_IDS. */
+function sxEnc(p){
+  if(!p.sx||!p.sx.length)return 0;
+  const o=[];
+  for(const s of p.sx){ const c=STATUS_IDS.indexOf(s.id); if(c<0)continue;
+    o.push(c,Math.max(0,Math.ceil(s.t*10)),s.n|0,Math.round((s.tMax||s.t)*10)); }
+  return o.length?o:0;
+}
+function sxDec(a){
+  if(!Array.isArray(a))return [];
+  const o=[];
+  for(let i=0;i+3<a.length;i+=4){ const id=STATUS_IDS[a[i]]; if(!id)continue;
+    o.push({id,t:a[i+1]/10,n:a[i+2],tMax:Math.max(.1,a[i+3]/10)}); }
+  return o;
+}
 function snap(){
   const pl=[]; for(const p of S.players.values())
     pl.push([p.id,Math.round(p.x),Math.round(p.y),Math.round(p.hp),p.maxhp,
@@ -141,7 +157,8 @@ function snap(){
       Math.round((p.beamAng||0)*100),Math.round(p.beamLen||0),
       p.team===undefined?-1:p.team,
       p.lvl||0,Math.round(p.xp||0),p.lvl?xpNeeded(p.lvl):0,
-      Math.round(p.tMax),Math.round(p.leechIdleR||0)]);
+      Math.round(p.tMax),Math.round(p.leechIdleR||0),
+      sxEnc(p)]);
   const en=S.en.map(e=>[e.id,e.ti,Math.round(e.x),Math.round(e.y),
     Math.round(e.hp/e.maxhp*100),e.flash>0?1:0,e.st===1?1:0,e.scl>1?e.scl:0,e.shielded?1:0,
     e.team===undefined?-1:e.team,
@@ -196,7 +213,7 @@ function applySnap(s){
   if(s.sx)for(const k of s.sx){ if(Array.isArray(k))sfx(k[0],k[1],k[2]); else sfx(k); }
   if(s.dn)for(const d of s.dn) floatNums.push({x:d[0],y:d[1],v:d[2],hurt:d[3],t});
   const seenP=new Set();
-  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm,lv,xp,xpN,tMax,leechR]=a; seenP.add(id);
+  for(const a of s.pl){const [id,x,y,hp,mhp,fl,spd,dcd,sh,tp,orbN,sabN,shd,shdMax,bAng,bLen,tm,lv,xp,xpN,tMax,leechR,sxa]=a; seenP.add(id);
     let p=V.players.get(id);
     if(!p){p={id,dx:x,dy:y};V.players.set(id,p);}
     p.px=p.dx;p.py=p.dy;
@@ -208,6 +225,7 @@ function applySnap(s){
     p.shield=shd||0;p.shieldMax=shdMax||0;
     p.beamAng=(bAng||0)/100;p.beamLen=bLen||0;
     p.leechIdleR=leechR||0;
+    p.sx=sxDec(sxa);
     p.team=(tm===undefined||tm<0)?undefined:tm;
     p.lvl=lv||0; p.xp=xp||0; p.xpNeed=xpN||0;
     if(id===myId){
@@ -397,6 +415,12 @@ function hostOnData(c,d){
   // host stays authoritative over the CONSEQUENCE (damage/i-frames/surge), the client
   // only supplies the DETECTION, so nobody gets hit by something they didn't see land.
   else if(d.t==='hit'){ const p=S&&S.players.get(c._pid); if(p)applyClientHit(p,d.k,d.id); }
+  // NPC shop (panels.js): 'nb' = buy slot d.s from NPC d.u, 'nq' = ask for my ledger on open.
+  // Host validates and answers only the asker; dungeon.js npcBuy() owns every rule.
+  else if(d.t==='nb'||d.t==='nq'){ const p=S&&S.players.get(c._pid);
+    if(p&&typeof npcBuy==='function'){
+      const r=d.t==='nb'?npcBuy(p,String(d.u),d.s|0):{ok:true,q:1,own:npcOwn(p,String(d.u))};
+      try{ c.send({t:'nbr',u:d.u,s:d.s|0,ok:r.ok?1:0,q:r.q||0,m:r.m||'',own:r.own}); }catch(e){} } }
 }
 /* GHOST FIX: WebRTC 'close' doesn't always fire — kick silent peers after 8s */
 function pruneStalePeers(){
@@ -497,6 +521,7 @@ function clientOnData(c,d){
     case 'pk': showPickUI(d.opts,d.dl,d.own); break;
     case 'pkend': hidePickUI(); if(d.ups)myUpgrades=d.ups; break;
     case 'ts': toast(d.m); break;
+    case 'nbr': if(typeof Panels!=='undefined')Panels.onShopResult(d); break;
     case 'go': finishRun(d.wave,d.score,d.shards,d.depth!==undefined?{victory:!!d.victory,depth:d.depth,floor:d.floor}:{}); break;
     case 'rs': obstacles=d.obstacles; if(d.ww){WW=d.ww;WH=d.wh;}
       if(d.diff&&DIFFS[d.diff])diffKey=d.diff;

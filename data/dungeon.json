@@ -27,7 +27,7 @@
   "crate": { "shardChance": 0.35, "shardValue": [4, 10], "heartChance": 0.10, "heartValue": 25 },
   "barrel": { "radius": 70, "damage": 60 },
   "bossDrops": { "chests": 2, "heartsPerPlayer": 1, "heartValue": 25 },
-  "shop": { "mend": {"cost":[40,70,110], "heal":0.4}, "cache": {"cost":[60,100,150]}, "refine": {"cost":[80,130,190]}, "radius": 20 },
+  "shop": { "mode": "npc", "mend": {"cost":[40,70,110], "heal":0.4}, "cache": {"cost":[60,100,150]}, "refine": {"cost":[80,130,190]}, "radius": 20 },
   "floors": [
     { "name": "RUST CATACOMBS", "biome": 0, "boss": "rotation",
       "main": ["start","combat","combat","combat","elite","combat","combat","boss"],

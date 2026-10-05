@@ -4,12 +4,18 @@
    ============================================================ */
 
 /* ---------------- input & local movement ---------------- */
-addEventListener('keydown',e=>{keys[e.code]=true;
+addEventListener('keydown',e=>{
+  // NPC panels (panels.js) get first refusal: E to talk, and while one is
+  // open its own keys (choices, buy, Esc) never reach movement or dash
+  if(mode==='play'&&!(e.target&&e.target.tagName==='INPUT')&&typeof Panels!=='undefined'&&Panels.key(e)){
+    e.preventDefault(); return; }
+  keys[e.code]=true;
   if(e.code==='Space'){e.preventDefault(); if(mode==='play')tryDash();}});
 addEventListener('keyup',e=>keys[e.code]=false);
 
 function tryDash(){
   if(myPos.dashT>0||myPos.dead)return;
+  if(typeof Panels!=='undefined'&&Panels.open)return;   // talking/trading
   myPos.dashT=myPos.dcd; myPos.dashing=BAL.player.dashDuration; myPos.inv=BAL.player.dashInvuln;
   // dodge reactions: host resolves its own immediately, clients flag it for
   // the next input packet so the host stays the single authority
@@ -22,6 +28,7 @@ function moveLocal(dt){
   if(keys['KeyW']||keys['ArrowUp'])my--; if(keys['KeyS']||keys['ArrowDown'])my++;
   if(keys['KeyA']||keys['ArrowLeft'])mx--; if(keys['KeyD']||keys['ArrowRight'])mx++;
   if(touch.active){mx=touch.dx;my=touch.dy;}
+  if(typeof Panels!=='undefined'&&Panels.open){mx=0;my=0;}  // stand still while a panel is open
   const ml=Math.hypot(mx,my); if(ml>1){mx/=ml;my/=ml;}
   const sp=myPos.spd*(myPos.dashing>0?BAL.player.dashSpeedMult:1);
   const ox=myPos.x, oy=myPos.y;
@@ -214,7 +221,8 @@ const base=$('stickbase'),nub=$('sticknub');
 addEventListener('touchstart',e=>{
   if(mode!=='play')return;
   for(const t of e.changedTouches){
-    if(t.target.id==='dashbtn')continue;
+    if(t.target.id==='dashbtn'||t.target.id==='talkbtn')continue;
+    if(t.target.closest&&t.target.closest('#npcPanel'))continue;  // let panel taps through
     if(t.clientX<innerWidth*.55&&!touch.active){
       touch.active=true;touch.id=t.identifier;touch.ox=t.clientX;touch.oy=t.clientY;
       touch.dx=0;touch.dy=0;
@@ -308,8 +316,23 @@ function startTraining(){
   myPos={x:ent[0],y:ent[1],inv:0,dashT:0,dashing:0,spd:effSpeed(me),dcd:me.st.dashCd,dead:false};
   me.x=myPos.x; me.y=myPos.y;
   V=null; mode='play'; musicStart();
+  npcTrainingSpawn(myPos.x,myPos.y);   // a merchant to try the panels on (dungeon.js)
   toast('Training range — press T to rebuild');
+  if(STATUS_IDS.length)toast('Status test: 1–'+Math.min(9,STATUS_IDS.length)+' apply · 0 clear · − hurt · = heal');
 }
+/* Training range: poke your own health to see the bar effects and statuses.
+   Host-side calls, the same ones real content will make. */
+addEventListener('keydown',e=>{
+  if(mode!=='play'||!S||!S.training||(e.target&&e.target.tagName==='INPUT'))return;
+  if(typeof Panels!=='undefined'&&Panels.open)return;
+  const me=S.players.get(myId); if(!me||me.dead)return;
+  const m=/^Digit([0-9])$/.exec(e.code);
+  if(m){ const i=+m[1];
+    if(i===0){ clearStatus(me); toast('Statuses cleared'); }
+    else if(STATUS_IDS[i-1]){ const id=STATUS_IDS[i-1]; applyStatus(me,id); toast(STATUS[id].glyph+' '+STATUS[id].name); } }
+  else if(e.code==='Minus'){ me.inv=0; myPos.inv=0; hurt(me,Math.max(1,Math.round(me.maxhp*.18))); }
+  else if(e.code==='Equal'){ healPlayer(me,me.maxhp*.25); }
+});
 addEventListener('keydown',e=>{
   if(e.code!=='KeyT'||(e.target&&e.target.tagName==='INPUT'))return;
   if(mode==='play'&&S&&S.training){ mode='title'; musicStop();
@@ -318,7 +341,8 @@ addEventListener('keydown',e=>{
 
 // every overlay must be listed here or show(null) cannot dismiss it — that is
 // exactly how the training screen got stuck on top of the game
-function show(id){['scrTitle','scrSetup','scrShop','scrBoard','scrPick','scrDeath',
+function show(id){
+  if(typeof Panels!=='undefined')Panels.close();['scrTitle','scrSetup','scrShop','scrBoard','scrPick','scrDeath',
   'scrEditor','scrLobby','scrTrain'].forEach(s=>$(s).classList.add('hidden'));
   if(id)$(id).classList.remove('hidden');}
 function saveName(){const n=$('nameInput').value.trim().toUpperCase().slice(0,12);

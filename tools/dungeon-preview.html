@@ -53,6 +53,7 @@ const TCOL=['#070910','#1a2440','#39415f','#2f6f6c','#4ef0e8','#05070d','#7a2a22
 async function boot(){
   const get=p=>fetch('../data/'+p).then(r=>{if(!r.ok)throw new Error(p+' '+r.status);return r.json();});
   DGN=await get('dungeon.json'); ROOMT=await get('rooms.json'); TILES=await get('tiles.json');
+  NPCD=await get('npcs.json').catch(()=>null);   // NPC spots (shop merchant, floor-1 warden)
   bakeTiles(TILES,DGN.biomes);
   const bad=dgValidateAll();
   document.getElementById('errs').textContent=Object.keys(bad).length
@@ -95,6 +96,8 @@ function draw(){
     dot(r.spawns,'#ff5c47',5); dot(r.chests,'#ffd35c',6); dot(r.entry,'#7cff6b',7);
     dot(r.hatch,'#b3a6ff',8); dot(r.shop,'#ff4fd8',6);
   }
+  if(marks)for(const n of tm.npcs||[]){ c.fillStyle='#ffffff'; c.beginPath(); c.arc(n.x*sc,n.y*sc,5,0,Math.PI*2); c.fill();
+    c.fillStyle='#ffd35c'; c.font='10px monospace'; c.fillText(n.id,n.x*sc+7,n.y*sc+4); c.font='bold 12px monospace'; }
   c.fillStyle='#4ef0e8';
   for(const d of tm.doors)for(const i of d.tiles){ const x=i%tm.w, y=(i/tm.w)|0;
     c.fillRect(x*tm.ts*sc,y*tm.ts*sc,Math.max(2,tm.ts*sc),Math.max(2,tm.ts*sc)); }

@@ -22,6 +22,7 @@ function mkPlayer(id,name,sprite,cls){
     st:{spd:PB.speed,dmgM:1,cdM:1,crit:0,regen:0,greed:1,dashCd:PB.dashCooldown,bspdM:1,
         mag:PB.pickupRadius,tRchM:1,tRegen:0,costM:1,
         auraRegen:0,auraDmg:0,tithe:0,droneHpM:1,dmgTakenM:1},
+    sx:[],   // live status effects — see applyStatus() below hurt()
     weapons:[{id:c.wpn,lvl:1,rar:'c',cd:0}]};
   return p;
 }
@@ -545,17 +546,21 @@ function dmgNumE(x,y,v,hurtFlag,target){
   if(role==='client'||!v)return;
   const t=now();
   if(target&&target._dnPop&&t-target._dnT<DMGNUM_COALESCE_MS){
-    target._dnPop.v+=Math.round(v); target._dnPop.t=t; target._dnT=t;
+    // accumulate the raw float: rounding each sub-1 tick (status DoT, beams)
+    // would leave a coalesced pop stuck at "0" forever
+    const pp=target._dnPop; pp.raw=(pp.raw||pp.v)+v; pp.v=Math.round(pp.raw); pp.t=t; target._dnT=t;
     return;
   }
-  const pop={x,y,v:Math.round(v),hurt:hurtFlag?1:0,t};
+  const pop={x,y,v:Math.round(v),raw:v,hurt:hurtFlag?1:0,t};
   floatNums.push(pop);
   if(target){ target._dnPop=pop; target._dnT=t; }
   if(S&&conns.length&&S.dnQ.length<20)
     S.dnQ.push([Math.round(x),Math.round(y),Math.round(v),hurtFlag?1:0]);
 }
-function hurt(p,amt,srcId,dot){
-  if(p.inv>0||p.dead||now()<p.pickInvUntil)return;
+/* pierce: status-effect DoT ticks (tickStatus) — they keep ticking through
+   i-frames, otherwise every ordinary hit would pause a poison for 0.9 s. */
+function hurt(p,amt,srcId,dot,pierce){
+  if((p.inv>0&&!pierce)||p.dead||now()<p.pickInvUntil)return;
   if(srcId!==undefined&&srcId!==p.id)p.lastHitBy=srcId;
   if(dot){
     // Continuous damage arrives ~60x/second in fractional amounts. The
@@ -565,10 +570,10 @@ function hurt(p,amt,srcId,dot){
     // halving the laser's configured dps changed almost nothing.
     // Armour is a per-HIT flat reduction and is deliberately not applied
     // per tick; doing so would cancel a DoT outright.
-    amt=amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1);
+    amt=amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1)*statusMul(p,'dmgTakenM');
     if(amt<=0)return;
   }else{
-    amt=Math.round(amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1)); // difficulty + glass-cannon scaling
+    amt=Math.round(amt*(DIFF().enemyDamage||1)*(p.st.dmgTakenM||1)*statusMul(p,'dmgTakenM')); // difficulty + glass-cannon + fortify/exposed
     amt=Math.max(1,amt-(p.armor||0));            // armor: flat reduction per hit
   }
   p.shieldCd=BAL.player.shield.regenDelay;       // any hit delays shield regen
@@ -592,8 +597,82 @@ function hurt(p,amt,srcId,dot){
     p.lastHitBy=undefined;
     if(S.moba) p.respawnAt=now()+(MOBA.respawnDelay||6)*1000;
     else if(S.persistent) p.respawnAt=now()+((BAL.battleground&&BAL.battleground.respawnDelay)||3)*1000;
-    else if(S.training){ p.dead=false; p.hp=p.maxhp; p.inv=2; } // sandbox: you get back up
+    else if(S.training){ clearStatus(p); p.dead=false; p.hp=p.maxhp; p.inv=2; } // sandbox: you get back up
     else if([...S.players.values()].every(q=>q.dead)) runOver(); }
+}
+
+/* ---------------- health-altering status effects ----------------
+   Data: data/status.json (STATUS, data.js). Host-authoritative like hurt():
+   p.sx = [{id, t: seconds left, tMax: duration of the latest application,
+            n: stacks, add: max-HP delta this effect applied (maxhpM only)}].
+   Rules (kept deliberately small until the item pass decides what uses them):
+   - re-applying refreshes the timer and adds stacks up to maxStacks;
+   - hps (HP/s per stack) heals through healPlayer() or hurts through
+     hurt(...,dot=true,pierce=true), so armour/shield/difficulty all apply;
+   - dmgTakenM / healM: the strongest active effect on each side wins, so two
+     Fortifies don't make you immortal and two Grievous don't zero healing;
+   - maxhpM adds its delta once on apply and removes exactly that on expiry,
+     so upgrades picked mid-buff can't drift max HP;
+   - everything clears on death.
+   Synced to clients in the snapshot (net.js) for the HUD and world fx. */
+function statusMul(p,key){
+  if(!p.sx||!p.sx.length)return 1;
+  let lo=1,hi=1;
+  for(const s of p.sx){ const v=(STATUS[s.id]||{})[key]; if(!v)continue; if(v<lo)lo=v; if(v>hi)hi=v; }
+  return lo*hi;
+}
+function statusMaxHpShift(p,delta){
+  const before=p.maxhp;
+  p.maxhp=Math.max(1,p.maxhp+delta);
+  const d=p.maxhp-before;
+  if(d>0)p.hp+=d; else p.hp=Math.max(p.dead?0:1,Math.min(p.hp,p.maxhp));
+  return d;
+}
+function applyStatus(p,id,opt){
+  const D=STATUS[id]; if(!D||!p||p.dead)return null;
+  opt=opt||{};
+  const dur=opt.dur!=null?opt.dur:(D.dur||3), cap=Math.max(1,D.maxStacks||1);
+  if(!p.sx)p.sx=[];
+  let s=p.sx.find(x=>x.id===id);
+  if(s){ s.t=Math.max(s.t,dur); s.tMax=Math.max(s.t,dur); s.n=Math.min(cap,s.n+(opt.stacks||1)); }
+  else{
+    s={id,t:dur,tMax:dur,n:Math.min(cap,opt.stacks||1),add:0,src:opt.src};
+    if(D.maxhpM)s.add=statusMaxHpShift(p,Math.round(p.maxhp*(D.maxhpM-1)));
+    p.sx.push(s);
+  }
+  if(opt.src!==undefined)s.src=opt.src;
+  return s;
+}
+function clearStatus(p,id){
+  if(!p.sx)return;
+  for(let i=p.sx.length-1;i>=0;i--){ const s=p.sx[i];
+    if(id&&s.id!==id)continue;
+    if(s.add)statusMaxHpShift(p,-s.add);
+    p.sx.splice(i,1); }
+}
+function tickStatus(p,dt){
+  if(!p.sx||!p.sx.length)return;
+  if(p.dead){ clearStatus(p); return; }
+  for(let i=p.sx.length-1;i>=0;i--){
+    const s=p.sx[i], D=STATUS[s.id];
+    if(!D){ p.sx.splice(i,1); continue; }
+    const step=Math.min(dt,Math.max(0,s.t));
+    if(D.hps&&step>0){
+      const amt=D.hps*s.n*step;
+      if(amt>0)healPlayer(p,amt); else hurt(p,-amt,s.src,true,true);
+      if(p.dead)return;                         // hurt() may have killed — tickStatus clears next frame
+    }
+    s.t-=dt;
+    if(s.t<=0){ if(s.add)statusMaxHpShift(p,-s.add); p.sx.splice(i,1); }
+  }
+}
+/* Every heal goes through here so Grievous-style healM applies everywhere.
+   Returns the HP actually restored. */
+function healPlayer(p,amt){
+  if(!p||p.dead||!(amt>0))return 0;
+  const before=p.hp;
+  p.hp=Math.min(p.maxhp,p.hp+amt*statusMul(p,'healM'));
+  return p.hp-before;
 }
 // a remote client's own screen decided this bullet/enemy touched them — host
 // still owns the CONSEQUENCE (i-frames, phase surge, armor/shield math all
@@ -828,7 +907,8 @@ function hostUpdate(dt){
       if(Math.hypot(q.x-p.x,q.y-p.y)<PB.auraRadius){aR+=q.st.auraRegen;aD+=q.st.auraDmg;} }
     p.auraR=aR;
     p.dmgBoost=(1+aD)*(p.surgeT>0?PB.surge.mult:1);
-    if(!p.dead)p.hp=Math.min(p.maxhp,p.hp+(p.st.regen+aR)*dt);
+    if(!p.dead)healPlayer(p,(p.st.regen+aR)*dt);
+    tickStatus(p,dt);
     // T-charge: default behavior is "reload after empty" — fire freely while
     // charge remains, then once it hits 0 it locks and recharges to full.
     // Coolant Loop (tRegen) adds a flat trickle while NOT locked, so it just
@@ -1418,7 +1498,7 @@ function hostUpdate(dt){
     for(const p of S.players.values()){if(p.dead)continue;
       if(Math.hypot(it.x-p.x,it.y-p.y)<(p.st.mag||7)){
         it.dead=true;
-        if(it.k===0){p.hp=Math.min(p.maxhp,p.hp+it.v);sfxE('heal');if(p.id===myId)toast('+'+it.v+' HP');else sendTo(p.id,{t:'ts',m:'+'+it.v+' HP'});}
+        if(it.k===0){healPlayer(p,it.v);sfxE('heal');if(p.id===myId)toast('+'+it.v+' HP');else sendTo(p.id,{t:'ts',m:'+'+it.v+' HP'});}
         else if(it.k===1){p.shards+=it.v;sfxE('shard');}
         else if(it.k===2){openChest(p);sfxE('chest');}
         break;}}}

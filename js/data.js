@@ -23,6 +23,10 @@ let BOSS_MINION={};  // boss id -> unique minion id
 let DGN=null;        // dungeon.json — Descent tuning (floors, biomes, pacing)
 let ROOMT=[];        // rooms.json — hand-authored Descent room templates
 let TILES={};        // tiles.json — Descent tile/prop pixel art ({pal, rows} like sprites.json)
+let NPCD=null;       // npcs.json — NPC cast, dialog trees, shop stock + items (dungeon.js / panels.js)
+let STATUS={};       // status.json — health-altering buffs/debuffs keyed by id (sim.js)
+let STATUS_IDS=[];   // status ids in file order = their network code
+let HUDC=null;       // hud.json — health-bar feel (hudfx.js / render.js)
 
 const RARS={c:{n:'COMMON',max:3,dm:1},r:{n:'RARE',max:5,dm:1.15},e:{n:'EPIC',max:7,dm:1.35},l:{n:'LEGENDARY',max:9,dm:1.6}};
 
@@ -233,6 +237,14 @@ async function loadData(){
     fetchJson('data/dungeon.json'),   fetchJson('data/rooms.json'),
     fetchJson('data/tiles.json'),
   ]);
+  // optional registries: a missing file degrades to "feature off" rather than
+  // a failed boot (an older server checkout, a half-synced deploy)
+  const opt=p=>fetchJson(p).catch(e=>{ console.warn('optional data missing:',p,e.message); return null; });
+  const [npcs,status,hud]=await Promise.all([opt('data/npcs.json'),opt('data/status.json'),opt('data/hud.json')]);
+  NPCD=npcs||{npcs:{},items:{},placements:[]};
+  STATUS={}; STATUS_IDS=[];
+  for(const k in (status||{})){ if(k[0]==='_')continue; STATUS[k]=status[k]; STATUS_IDS.push(k); }
+  HUDC=hud||{};
   BAL=bal; DIFFS=diffs; MOBA=moba;
   DGN=dungeon; ROOMT=rooms; TILES=tiles;
 
@@ -259,7 +271,7 @@ async function loadData(){
     ps.g=ps.glyph; ps.n=ps.name;
     ps.d=(ps.mp?'CO-OP · ':'')+(ps.desc||(genStatDesc(ps.stats)+(ps.heal?(', heal '+ps.heal):'')));
     ps.f=p=>{ applyStats(p,ps.stats);
-      if(ps.heal)p.hp=Math.min(p.maxhp,p.hp+ps.heal);
+      if(ps.heal)healPlayer(p,ps.heal);
       if(ps.special&&SPECIAL_PASSIVES[ps.special])SPECIAL_PASSIVES[ps.special](p); };
   }
 
@@ -281,6 +293,7 @@ async function loadData(){
   });
   for(const id in sprites) bakeSprite(id,sprites[id]);
   bakeTiles(TILES,DGN&&DGN.biomes);
+  for(const id in NPCD.npcs){ const n=NPCD.npcs[id]; if(n.sprite)bakeSprite('npc_'+id,n.sprite); }
 
   if(!BOSS_POOL.length)throw new Error('no rotation bosses defined in enemies.json');
 }

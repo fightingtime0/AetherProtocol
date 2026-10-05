@@ -19,6 +19,7 @@ function loop(){
         dodgePending=0;}}
     updateHUD();
   }
+  if(typeof Panels!=='undefined')Panels.update(dt);
   render();
   requestAnimationFrame(loop);
 }
